@@ -10,6 +10,10 @@ import { errorHandler } from "./middleware/errorHandler.js";
 
 const app = express();
 
+// Behind Render's proxy, req.ip would otherwise be the proxy's address for every request, and the rate limiters
+// would treat all users as one client. 1 = trust exactly one hop, so a client can't forge its IP with its own header.
+app.set("trust proxy", 1);
+
 // Order matters: each middleware runs in the order it is registered.
 app.use(helmet());
 app.use(cors({ origin: env.clientOrigin, credentials: true }));

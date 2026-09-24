@@ -58,7 +58,8 @@ export const env = Object.freeze({
   jwtAccessSecret: process.env.JWT_ACCESS_SECRET,
   jwtAccessTtl,
   refreshTokenTtlDays,
-  clientOrigin: process.env.CLIENT_ORIGIN,
+  // Browsers send Origin without a trailing slash, and cors compares the strings exactly: "https://x.app/" never matches.
+  clientOrigin: process.env.CLIENT_ORIGIN.replace(/\/+$/, ""),
   // Optional, and only read by the create-admin script; never set it in a long-lived server's environment.
   createAdminPassword: process.env.CREATE_ADMIN_PASSWORD || undefined,
 });
