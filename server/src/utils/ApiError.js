@@ -4,13 +4,15 @@ export class ApiError extends Error {
    * @param {string} message    safe to show the client
    * @param {Array<{field?: string, message: string}>} errors field-level detail
    * @param {boolean} isOperational true = expected failure we chose to throw; false = a bug
+   * @param {string|null} code machine-readable reason (e.g. TOKEN_EXPIRED) for clients to branch on; the message is for humans
    */
-  constructor(statusCode, message, errors = [], isOperational = true) {
+  constructor(statusCode, message, errors = [], isOperational = true, code = null) {
     super(message);
     this.name = "ApiError";
     this.statusCode = statusCode;
     this.errors = errors;
     this.isOperational = isOperational;
+    this.code = code;
     // Keep this constructor out of the stack so it starts at the line that threw.
     Error.captureStackTrace(this, this.constructor);
   }
@@ -19,12 +21,12 @@ export class ApiError extends Error {
     return new ApiError(400, message, errors);
   }
 
-  static unauthorized(message = "Authentication required") {
-    return new ApiError(401, message);
+  static unauthorized(message = "Authentication required", code = null) {
+    return new ApiError(401, message, [], true, code);
   }
 
-  static forbidden(message = "You do not have permission to do this") {
-    return new ApiError(403, message);
+  static forbidden(message = "You do not have permission to do this", code = null) {
+    return new ApiError(403, message, [], true, code);
   }
 
   static notFound(message = "Resource not found") {
