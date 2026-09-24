@@ -1,15 +1,22 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
 import ErrorBanner from "../components/ErrorBanner.jsx";
 
 export default function Login() {
-  const { user, loading, login } = useAuth();
+  const { user, loading, login, sessionMessage, clearSessionMessage } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
+
+  // Copy the "session ended" message into local state, then clear it from context so a later visit to /login
+  // doesn't show it again. Typing dismisses the local copy.
+  const [endedMessage, setEndedMessage] = useState(sessionMessage);
+  useEffect(() => {
+    if (sessionMessage) clearSessionMessage();
+  }, [sessionMessage, clearSessionMessage]);
 
   if (loading) return <p className="p-6 text-gray-500">Loading...</p>;
   // Already signed in (or just did): go where ProtectedRoute originally sent us from, else the dashboard.
@@ -32,6 +39,11 @@ export default function Login() {
     <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
       <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded border border-gray-200 bg-white p-6">
         <h1 className="text-xl font-semibold">Sign in to ServiceDesk Pro</h1>
+        {endedMessage && (
+          <p role="status" className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {endedMessage}
+          </p>
+        )}
         <ErrorBanner error={error} />
 
         <label className="block text-sm">
@@ -41,7 +53,10 @@ export default function Login() {
             required
             autoComplete="username"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              setEndedMessage(null);
+            }}
             className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
           />
         </label>
@@ -53,7 +68,10 @@ export default function Login() {
             required
             autoComplete="current-password"
             value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            onChange={(e) => {
+              setPassword(e.target.value);
+              setEndedMessage(null);
+            }}
             className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
           />
         </label>

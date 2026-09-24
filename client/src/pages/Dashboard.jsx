@@ -1,4 +1,5 @@
 import { useAuth } from "../AuthContext.jsx";
+import { roleLabel } from "../roles.js";
 
 export default function Dashboard() {
   const { user } = useAuth();
@@ -10,7 +11,7 @@ export default function Dashboard() {
         <dt className="text-gray-500">Name</dt>
         <dd>{user.fullName}</dd>
         <dt className="text-gray-500">Role</dt>
-        <dd>{user.role.replaceAll("_", " ")}</dd>
+        <dd>{roleLabel(user.role)}</dd>
         <dt className="text-gray-500">Email</dt>
         <dd>{user.email}</dd>
       </dl>

@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router";
+import { BrowserRouter, Routes, Route } from "react-router";
 import { AuthProvider } from "./AuthContext.jsx";
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import RequireRole from "./components/RequireRole.jsx";
@@ -8,6 +8,7 @@ import ChangePassword from "./pages/ChangePassword.jsx";
 import Dashboard from "./pages/Dashboard.jsx";
 import Users from "./pages/Users.jsx";
 import Departments from "./pages/Departments.jsx";
+import NotFound from "./pages/NotFound.jsx";
 import { ROLES } from "./roles.js";
 
 export default function App() {
@@ -32,7 +33,7 @@ export default function App() {
             </Route>
           </Route>
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </AuthProvider>
     </BrowserRouter>

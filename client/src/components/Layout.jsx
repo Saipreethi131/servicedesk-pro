@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { Link, Outlet, useNavigate } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
+import ErrorBanner from "./ErrorBanner.jsx";
 import { ROLES } from "../roles.js";
 
 const navLinkClass = "text-blue-600 hover:underline";
@@ -7,10 +9,20 @@ const navLinkClass = "text-blue-600 hover:underline";
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const [loggingOut, setLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState(null);
 
   const handleLogout = async () => {
-    await logout();
-    navigate("/login", { replace: true });
+    setLogoutError(null);
+    setLoggingOut(true);
+    try {
+      await logout();
+      navigate("/login", { replace: true });
+    } catch {
+      // logout() only throws when the server could not be reached; the user is still logged in.
+      setLogoutError({ message: "Could not log out, please try again" });
+      setLoggingOut(false);
+    }
   };
 
   return (
@@ -43,14 +55,20 @@ export default function Layout() {
             )}
             <button
               onClick={handleLogout}
-              className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-100"
+              disabled={loggingOut}
+              className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-100 disabled:opacity-60"
             >
-              Log out
+              {loggingOut ? "Logging out..." : "Log out"}
             </button>
           </div>
         </div>
       </nav>
       <main className="mx-auto max-w-5xl px-4 py-8">
+        {logoutError && (
+          <div className="mb-4">
+            <ErrorBanner error={logoutError} />
+          </div>
+        )}
         <Outlet />
       </main>
     </div>
