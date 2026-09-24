@@ -1,11 +1,14 @@
-import { createContext, useContext, useEffect, useState } from "react";
-import { ApiError, request, refreshSession, setAccessToken, onSessionExpired, wakeServer } from "./api.js";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
+import { ApiError, request, refreshSession, setAccessToken, onSessionExpired, onForbidden, wakeServer } from "./api.js";
 import ServerStatus from "./components/ServerStatus.jsx";
 
 const AuthContext = createContext(null);
 
 const SLOW_STARTUP_MS = 4000;
+const RETURN_REFRESH_MIN_MS = 60_000; // re-read the user on tab focus at most this often
+const FORBIDDEN_REFRESH_MIN_MS = 10_000; // ...and after a 403 at most this often
 const SESSION_ENDED_MESSAGE = "Your session ended. Please log in again.";
+const ACCESS_DENIED_MESSAGE = "You don't have access to that page.";
 
 // These outcomes say nothing about whether the session is valid: no response, a rate limit, or a server error.
 // Anything else (401 for no cookie or a dead one) is a real "not logged in".
@@ -19,6 +22,68 @@ export function AuthProvider({ children }) {
   const [slowStartup, setSlowStartup] = useState(false);
   const [attempt, setAttempt] = useState(0); // bumping it reruns the startup effect
   const [sessionMessage, setSessionMessage] = useState(null); // shown once on /login after a forced sign-out
+  const [accessNotice, setAccessNotice] = useState(null); // shown once on the dashboard after RequireRole turned the user away
+
+  // Refs, not state: they are read from event handlers and timers, and changing them must not re-render.
+  const userRef = useRef(null); // the current user, for callbacks that would otherwise capture a stale one
+  const refreshingUserRef = useRef(false);
+  const lastReturnRefreshRef = useRef(Date.now()); // starts "now": the startup check has just read the user
+  const lastForbiddenRefreshRef = useRef(0);
+
+  useEffect(() => {
+    userRef.current = user;
+  }, [user]);
+
+  // Re-reads the user from the server so role, department and mustChangePassword changed by an admin show up without a
+  // reload. Background work: it never throws and never shows anything. On a network error, a 429 or a 5xx the current
+  // user stays as it is. A 401 is already handled inside request() (session ended). It makes its own request with
+  // skipForbiddenHook, and returns at once if one is running, so it cannot trigger itself.
+  const refreshUser = useCallback(async () => {
+    if (!userRef.current || refreshingUserRef.current) return; // nobody logged in, or already running
+    refreshingUserRef.current = true;
+    try {
+      const { data } = await request("/auth/me", { skipForbiddenHook: true });
+      setUser((current) => {
+        // The user may have logged out, or another person logged in, while this was in flight: don't bring them back.
+        if (!current || current._id !== data.user._id) return current;
+        // Keep the same object when nothing changed, so a no-op refresh doesn't re-render the app.
+        return JSON.stringify(current) === JSON.stringify(data.user) ? current : data.user;
+      });
+    } catch {
+      // Deliberately silent, see above.
+    } finally {
+      refreshingUserRef.current = false;
+    }
+  }, []);
+
+  useEffect(() => {
+    const refreshOnReturn = () => {
+      if (document.visibilityState !== "visible") return;
+      const now = Date.now();
+      if (now - lastReturnRefreshRef.current < RETURN_REFRESH_MIN_MS) return; // focus and visibilitychange often fire together
+      lastReturnRefreshRef.current = now;
+      refreshUser();
+    };
+    document.addEventListener("visibilitychange", refreshOnReturn);
+    window.addEventListener("focus", refreshOnReturn);
+
+    onForbidden((err) => {
+      if (refreshingUserRef.current) return; // loop guard: a refreshUser already in flight is doing this job
+      const now = Date.now();
+      // PASSWORD_CHANGE_REQUIRED is a known state change, not a guess, so it skips the 10s limit. It cannot loop:
+      // /auth/me is allowed while a change is pending (D2.8), so refreshUser never gets that 403 itself.
+      const forced = err.code === "PASSWORD_CHANGE_REQUIRED";
+      if (!forced && now - lastForbiddenRefreshRef.current < FORBIDDEN_REFRESH_MIN_MS) return;
+      lastForbiddenRefreshRef.current = now;
+      refreshUser();
+    });
+
+    return () => {
+      document.removeEventListener("visibilitychange", refreshOnReturn);
+      window.removeEventListener("focus", refreshOnReturn);
+      onForbidden(() => {});
+    };
+  }, [refreshUser]);
 
   useEffect(() => {
     // An unrecoverable 401 inside any request signs the user out; ProtectedRoute then redirects to /login.
@@ -69,6 +134,10 @@ export function AuthProvider({ children }) {
 
   const clearSessionMessage = () => setSessionMessage(null);
 
+  // useCallback: these are effect dependencies in RequireRole and Dashboard, so their identity must not change per render.
+  const denyAccess = useCallback(() => setAccessNotice(ACCESS_DENIED_MESSAGE), []);
+  const clearAccessNotice = useCallback(() => setAccessNotice(null), []);
+
   const login = async (email, password) => {
     // auth: false so a wrong password's 401 is shown as an error instead of being treated as an expired session.
     const { data } = await request("/auth/login", { method: "POST", body: { email, password }, auth: false });
@@ -103,7 +172,21 @@ export function AuthProvider({ children }) {
   else if (loading && slowStartup) content = <ServerStatus waking />;
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, changePassword, sessionMessage, clearSessionMessage }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        login,
+        logout,
+        changePassword,
+        refreshUser,
+        sessionMessage,
+        clearSessionMessage,
+        accessNotice,
+        denyAccess,
+        clearAccessNotice,
+      }}
+    >
       {content}
     </AuthContext.Provider>
   );

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
+import useDocumentTitle from "../useDocumentTitle.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
 
 const MIN_LENGTH = 8; // characters, as on the server
@@ -17,6 +18,7 @@ const validate = (current, next, confirm) => {
 };
 
 export default function ChangePassword() {
+  useDocumentTitle("Change password");
   const { user, changePassword } = useAuth();
   const navigate = useNavigate();
   const [current, setCurrent] = useState("");
@@ -65,7 +67,7 @@ export default function ChangePassword() {
         </p>
       )}
 
-      <ErrorBanner error={error} />
+      <ErrorBanner error={error} focusOnShow />
       {field("Current password", current, setCurrent, "current-password")}
       {field("New password", next, setNext, "new-password")}
       {field("Confirm new password", confirm, setConfirm, "new-password")}

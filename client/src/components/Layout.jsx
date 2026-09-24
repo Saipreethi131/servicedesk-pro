@@ -66,7 +66,7 @@ export default function Layout() {
       <main className="mx-auto max-w-5xl px-4 py-8">
         {logoutError && (
           <div className="mb-4">
-            <ErrorBanner error={logoutError} />
+            <ErrorBanner error={logoutError} focusOnShow />
           </div>
         )}
         <Outlet />
