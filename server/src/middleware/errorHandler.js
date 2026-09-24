@@ -12,9 +12,17 @@ export const errorHandler = (err, req, res, _next) => {
   let statusCode = 500;
   let message = "Internal server error";
   let errors = [];
+  let code = null;
 
   if (err instanceof ApiError && err.isOperational) {
-    ({ statusCode, message, errors } = err);
+    ({ statusCode, message, errors, code } = err);
+  } else if (err.code === 11000) {
+    // MongoDB unique-index violation. Name the field from keyPattern, but never
+    // echo keyValue: it holds the submitted value (e.g. an email address).
+    const fields = Object.keys(err.keyPattern ?? {});
+    statusCode = 409;
+    message = fields.length ? `${fields.join(", ")} already exists` : "Duplicate value";
+    errors = fields.map((field) => ({ field, message: `${field} already exists` }));
   } else if (err.type === "entity.parse.failed") {
     // express.json() couldn't parse the body: the client sent malformed JSON.
     statusCode = 400;
@@ -34,6 +42,7 @@ export const errorHandler = (err, req, res, _next) => {
     success: false,
     message,
     errors,
+    ...(code && { code }), // only when set, so existing responses keep their exact shape
     // A stack trace reveals file paths and code structure; development only.
     ...(env.isDevelopment && { stack: err.stack }),
   });

@@ -29,6 +29,7 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     isActive: { type: Boolean, default: true }, // soft delete: tickets and audit entries reference users
     lastLoginAt: { type: Date },
+    mustChangePassword: { type: Boolean, default: false }, // set when an admin issues a temporary password (D2.8)
   },
   {
     timestamps: true,
