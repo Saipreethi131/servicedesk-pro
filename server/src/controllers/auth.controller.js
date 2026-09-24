@@ -9,7 +9,9 @@ const REFRESH_COOKIE = "refreshToken";
 // clearCookie only removes a cookie whose name, path and flags match how it was set, so both share this.
 const cookieOptions = {
   httpOnly: true, // not readable from JavaScript, which limits what an XSS bug can steal
-  sameSite: "strict",
+  // Production: the frontend is on a different domain, so the cookie must be allowed cross-site ("none").
+  // Browsers only accept "none" together with Secure. Locally, same-site requests can use the stricter "strict".
+  sameSite: env.isProduction ? "none" : "strict",
   secure: env.isProduction, // Secure cookies are not sent over plain http://localhost
   path: "/api/v1/auth",
 };

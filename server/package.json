@@ -10,7 +10,8 @@
     "dev": "nodemon --env-file=.env src/server.js",
     "start": "node --env-file-if-exists=.env src/server.js",
     "seed": "node --env-file=.env src/utils/seed.js",
-    "create-admin": "node --env-file-if-exists=.env src/utils/createAdmin.js"
+    "create-admin": "node --env-file-if-exists=.env src/utils/createAdmin.js",
+    "sync-indexes": "node --env-file-if-exists=.env src/utils/syncIndexes.js"
   },
   "dependencies": {
     "bcrypt": "^6.0.0",
