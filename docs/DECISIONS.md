@@ -173,3 +173,37 @@ Admin-set temporary password + mustChangePassword flag. While set, authenticate 
 
 ### D2.9 · Duplicate-key mapping
 errorHandler maps Mongo duplicate key (11000) -> 409.
+
+---
+
+## P3 — Authorization (RBAC) and user management
+
+### D3.1 · Two layers
+authorize(...roles) is a coarse route gate. Record-level access is decided in services from `actor` (= req.user, the DB document per D2.3), never from the token or request body. A route gate alone is never sufficient.
+
+### D3.2 · Explicit role lists, no hierarchy
+authorize() validates role names at route-definition time (unknown role throws at boot). Fails closed: no req.user -> 401; role not listed -> 403.
+
+### D3.3 · User-management policy
+SYSTEM_ADMIN manages any role in any department. IT_MANAGER manages only TECHNICIAN, ASSET_MANAGER, EMPLOYEE, and only in its own department; it cannot create, modify or assign SYSTEM_ADMIN or IT_MANAGER. TECHNICIAN, ASSET_MANAGER, EMPLOYEE have no access to /users (self via /auth/me). View scope for IT_MANAGER = own department; manage scope = own department AND target role in its manageable set.
+
+### D3.4 · Scoping
+List queries use a scope filter built from the actor. Single-resource-by-id: 404 if it does not exist, 403 if it exists but is out of scope (project convention; trade-off: reveals that the ID exists). Fail closed: a non-admin actor with no department gets 403; never build a { department: null } filter. ObjectIds are compared with .equals().
+
+### D3.5 · Mass assignment
+Each endpoint has a field whitelist; any other key -> 400 naming the key. isActive, role, department, mustChangePassword never come from create-time client input except where the endpoint explicitly whitelists them. Passwords are never accepted via PATCH.
+
+### D3.6 · Self-protection
+A user cannot change their own role, department or isActive via /users/:id. The last active SYSTEM_ADMIN cannot be demoted or deactivated (409). Check-then-write; the race is accepted for now.
+
+### D3.7 · Deactivation and role changes
+Deactivation revokes all of the user's refresh tokens (D2.6). Role/department changes take effect on the next request (D2.3); no token action needed.
+
+### D3.8 · Admin password reset
+Admin password reset sets a temporary password, sets mustChangePassword=true and revokes all refresh tokens. Own password goes through /auth/change-password only.
+
+### D3.9 · Minimal Department model
+Minimal Department model introduced in P3 (name unique, isActive) because create-user must validate department; P5 extends it. Department is required for every role except SYSTEM_ADMIN.
+
+### Deferred
+Audit logging of user-admin actions -> P7. In-memory rate limiter, refresh grace window, invite-link flow -> P12.
