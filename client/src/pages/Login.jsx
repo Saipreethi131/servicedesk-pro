@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
+import useDocumentTitle from "../useDocumentTitle.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
 
 export default function Login() {
+  useDocumentTitle("Sign in");
   const { user, loading, login, sessionMessage, clearSessionMessage } = useAuth();
   const location = useLocation();
   const [email, setEmail] = useState("");
@@ -18,7 +20,13 @@ export default function Login() {
     if (sessionMessage) clearSessionMessage();
   }, [sessionMessage, clearSessionMessage]);
 
-  if (loading) return <p className="p-6 text-gray-500">Loading...</p>;
+  if (loading) {
+    return (
+      <p role="status" className="p-6 text-gray-500">
+        Loading...
+      </p>
+    );
+  }
   // Already signed in (or just did): go where ProtectedRoute originally sent us from, else the dashboard.
   if (user) return <Navigate to={location.state?.from?.pathname ?? "/"} replace />;
 
@@ -44,7 +52,7 @@ export default function Login() {
             {endedMessage}
           </p>
         )}
-        <ErrorBanner error={error} />
+        <ErrorBanner error={error} focusOnShow />
 
         <label className="block text-sm">
           <span className="text-gray-700">Email</span>

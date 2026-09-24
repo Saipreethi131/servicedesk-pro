@@ -1,9 +1,11 @@
 import { useEffect, useState } from "react";
 import { request } from "../api.js";
+import useDocumentTitle from "../useDocumentTitle.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
 import Notice from "../components/Notice.jsx";
 
 export default function Departments() {
+  useDocumentTitle("Departments");
   const [departments, setDepartments] = useState(null); // null = still loading
   const [loadError, setLoadError] = useState(null);
   const [name, setName] = useState("");
@@ -45,7 +47,7 @@ export default function Departments() {
 
       <form onSubmit={handleSubmit} className="max-w-md space-y-3 rounded border border-gray-200 bg-white p-4">
         <h2 className="font-medium">Add a department</h2>
-        <ErrorBanner error={error} />
+        <ErrorBanner error={error} focusOnShow />
         <Notice message={notice} />
         <label className="block text-sm">
           <span className="text-gray-700">Name (2-60 characters)</span>
@@ -68,7 +70,11 @@ export default function Departments() {
       <section className="max-w-md rounded border border-gray-200 bg-white p-4">
         <h2 className="mb-2 font-medium">Active departments</h2>
         <ErrorBanner error={loadError} />
-        {!loadError && departments === null && <p className="text-sm text-gray-500">Loading...</p>}
+        {!loadError && departments === null && (
+          <p role="status" className="text-sm text-gray-500">
+            Loading...
+          </p>
+        )}
         {departments?.length === 0 && <p className="text-sm text-gray-500">No departments yet.</p>}
         <ul className="divide-y divide-gray-100 text-sm">
           {departments?.map((d) => (

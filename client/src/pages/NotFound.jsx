@@ -1,7 +1,9 @@
 import { Link } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
+import useDocumentTitle from "../useDocumentTitle.js";
 
 export default function NotFound() {
+  useDocumentTitle("Page not found");
   const { user, loading } = useAuth();
 
   return (

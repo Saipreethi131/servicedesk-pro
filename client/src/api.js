@@ -23,6 +23,14 @@ const clearSession = () => {
   onSessionCleared();
 };
 
+// AuthContext registers here to be told about every 403, so it can re-read the user: a 403 often means the role or
+// mustChangePassword changed on the server since we last looked (PASSWORD_CHANGE_REQUIRED is the explicit case).
+// api.js only reports; AuthContext decides what to do, so api.js never imports it.
+let onForbiddenHandler = () => {};
+export const onForbidden = (handler) => {
+  onForbiddenHandler = handler;
+};
+
 // Carries the server's envelope fields, so pages can show the server's own message.
 const REQUEST_TIMEOUT_MS = 30_000;
 
@@ -138,21 +146,36 @@ export const wakeServer = () => {
 // ending the whole session (D2.5). Two simultaneous refreshes would present the same token twice and log the
 // user out; this happens for real when several requests expire together, and on every dev page load
 // because React StrictMode runs effects twice.
+const REFRESH_LOCK = "servicedesk-refresh";
+
+const doRefresh = () =>
+  send("/auth/refresh", { method: "POST" }).then(({ data }) => {
+    accessToken = data.accessToken;
+    return data.accessToken;
+  });
+
+// The in-tab sharing above cannot see other tabs. Two tabs sending the same refresh cookie at once (a browser restoring
+// several tabs, or two tabs whose tokens expire together) look like a replayed token: reuse detection (D2.5) revokes the
+// whole family and logs both out. A Web Lock is held across all tabs of this origin, so the refreshes run one after another.
+// The browser attaches the cookie when a request is sent, not when it is queued, so the waiting tab sends the cookie the
+// first tab just received. The lock is held until the response is back and the token stored (doRefresh's whole chain),
+// and only around this call: wakeServer() pings are side-effect free and must not wait behind a refresh.
+// navigator.locks is missing in insecure contexts and old browsers; there we keep the per-tab behaviour.
+const refreshAcrossTabs = () =>
+  typeof navigator !== "undefined" && navigator.locks
+    ? navigator.locks.request(REFRESH_LOCK, doRefresh)
+    : doRefresh();
+
 let refreshInFlight = null;
 export const refreshSession = () => {
-  refreshInFlight ??= send("/auth/refresh", { method: "POST" })
-    .then(({ data }) => {
-      accessToken = data.accessToken;
-      return data.accessToken;
-    })
-    .finally(() => {
-      refreshInFlight = null;
-    });
+  refreshInFlight ??= refreshAcrossTabs().finally(() => {
+    refreshInFlight = null;
+  });
   return refreshInFlight;
 };
 
 // auth: false for endpoints that must work without a session (login, logout).
-export const request = async (path, { method = "GET", body, auth = true } = {}) => {
+const execute = async (path, { method = "GET", body, auth = true } = {}) => {
   if (!auth) return send(path, { method, body });
 
   try {
@@ -174,5 +197,16 @@ export const request = async (path, { method = "GET", body, auth = true } = {}) 
       if (retryErr instanceof ApiError && retryErr.status === 401) clearSession();
       throw retryErr;
     }
+  }
+};
+
+// skipForbiddenHook: set by the request the 403 hook itself makes (AuthContext's refreshUser), so a 403 on that request
+// can never call the hook again and loop. The error is still thrown to the caller either way.
+export const request = async (path, options = {}) => {
+  try {
+    return await execute(path, options);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 403 && !options.skipForbiddenHook) onForbiddenHandler(err);
+    throw err;
   }
 };

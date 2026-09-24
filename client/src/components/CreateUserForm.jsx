@@ -16,8 +16,10 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
   const [lastName, setLastName] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState(ROLES.EMPLOYEE);
-  // An IT_MANAGER can only create users in their own department, so it is preset and locked.
-  const [department, setDepartment] = useState(isAdmin ? "" : (actor.department ?? ""));
+  // An IT_MANAGER can only create users in their own department, so it is derived from the current user on every render
+  // (not copied into state at mount, which would go stale if an admin moves them) and locked. Only an admin's pick is state.
+  const [adminDepartment, setDepartment] = useState("");
+  const department = isAdmin ? adminDepartment : (actor.department ?? "");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
@@ -59,7 +61,7 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
   return (
     <form onSubmit={handleSubmit} className="space-y-3 rounded border border-gray-200 bg-white p-4">
       <h2 className="font-medium">Create user</h2>
-      <ErrorBanner error={error} />
+      <ErrorBanner error={error} focusOnShow />
 
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block text-sm">
