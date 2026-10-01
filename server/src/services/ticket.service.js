@@ -61,6 +61,11 @@ const isInTicketScope = (actor, ticket) => {
   return false;
 };
 
+// Shared by setPriorityOverride (as a guard) and getTicket (as a computed field), so the rule lives in one place.
+const canOverridePriorityOn = (actor, ticket) =>
+  actor.role === ROLES.SYSTEM_ADMIN ||
+  (actor.role === ROLES.IT_MANAGER && Boolean(actor.department) && ticket.department.equals(actor.department));
+
 const REQUESTER_ONLY_ROLES = [ROLES.EMPLOYEE, ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
 
 export const createTicket = async (actor, input) => {
@@ -162,11 +167,24 @@ export const listTickets = async (actor, { page, limit, status, priority }) => {
 
 // Deliberately fetched with no scope filter: 404 means it doesn't exist, 403 means it exists but is out of
 // scope (D3.4-style trade-off: a 403 reveals the id is real). id format is validated by the controller.
+//
+// Three computed fields ride along so the client can render the right action buttons without reimplementing any
+// of this: availableTransitions (every status canTransition currently allows), canOverridePriority, and canComment
+// (always true here, since reaching this point already required the same scope check - kept as its own field for
+// a client that wants one flag per capability rather than inferring "can comment" from "didn't 403 on GET").
 export const getTicket = async (actor, id) => {
   const ticket = await Ticket.findById(id);
   if (!ticket) throw ApiError.notFound("Ticket not found");
   if (!isInTicketScope(actor, ticket)) throw ApiError.forbidden("You do not have permission to view this ticket");
-  return ticket;
+
+  const availableTransitions = TICKET_STATUS_VALUES.filter((status) => canTransition(ticket, actor, status));
+
+  return {
+    ...ticket.toJSON(),
+    availableTransitions,
+    canOverridePriority: canOverridePriorityOn(actor, ticket),
+    canComment: isInTicketScope(actor, ticket),
+  };
 };
 
 const ASSIGNABLE_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
@@ -234,11 +252,9 @@ export const setPriorityOverride = async (actor, id, { value, reason }) => {
   const ticket = await Ticket.findById(id);
   if (!ticket) throw ApiError.notFound("Ticket not found");
 
-  if (actor.role === ROLES.IT_MANAGER) {
-    if (!actor.department || !ticket.department.equals(actor.department)) {
-      throw ApiError.forbidden("You can only override priority on tickets in your own department");
-    }
-  } // SYSTEM_ADMIN: unrestricted
+  if (!canOverridePriorityOn(actor, ticket)) {
+    throw ApiError.forbidden("You can only override priority on tickets in your own department");
+  }
 
   if (!PRIORITY_VALUES.includes(value)) throw fieldError("value", "value is not a valid priority");
   const trimmedReason = requireString(reason, "reason").trim();
@@ -266,8 +282,10 @@ export const createComment = async (actor, ticketId, { body, isInternal }) => {
   const text = requireString(body, "body").trim();
   if (text.length < 1 || text.length > 5000) throw fieldError("body", "body must be 1-5000 characters");
 
-  // An EMPLOYEE passing isInternal:true is silently forced to false, not rejected - see the report for the trade-off.
-  const internal = STAFF_ROLES.includes(actor.role) ? Boolean(isInternal) : false;
+  if (isInternal && !STAFF_ROLES.includes(actor.role)) {
+    throw fieldError("isInternal", "Only staff can create internal comments");
+  }
+  const internal = Boolean(isInternal);
 
   try {
     return await Comment.create({ ticket: ticket._id, author: actor._id, body: text, isInternal: internal });
