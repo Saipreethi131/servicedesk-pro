@@ -20,7 +20,12 @@ export default function ErrorBanner({ error, focusOnShow = false }) {
       ref={ref}
       tabIndex={-1} // focusable from code, but not a stop in the Tab order
       role="alert"
-      className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+      className="rounded-md border px-3 py-2 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+      style={{
+        borderColor: "color-mix(in srgb, var(--color-danger) 30%, white)",
+        backgroundColor: "color-mix(in srgb, var(--color-danger) 8%, white)",
+        color: "var(--color-danger)",
+      }}
     >
       <p>{error.message}</p>
       {details.length > 0 && (

@@ -1,11 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { request } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
-import { manageableRoles, roleLabel } from "../roles.js";
+import { manageableRoles } from "../roles.js";
 import useDocumentTitle from "../useDocumentTitle.js";
 import CreateUserForm from "../components/CreateUserForm.jsx";
 import ErrorBanner from "../components/ErrorBanner.jsx";
 import Notice from "../components/Notice.jsx";
+import PageHeader from "../components/ui/PageHeader.jsx";
+import Card from "../components/ui/Card.jsx";
+import Badge from "../components/ui/Badge.jsx";
+import Button from "../components/ui/Button.jsx";
 
 const PAGE_SIZE = 20;
 
@@ -112,7 +116,7 @@ export default function Users() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-semibold">Users</h1>
+      <PageHeader title="Users" />
 
       <CreateUserForm
         departments={departments ?? []}
@@ -128,59 +132,62 @@ export default function Users() {
       <ErrorBanner error={actionError} focusOnShow />
       <Notice message={notice} />
 
-      <section className="rounded border border-gray-200 bg-white">
+      <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
           <table className={`w-full text-left text-sm ${loading ? "opacity-60" : ""}`}>
             <caption className="sr-only">Users</caption>
-            <thead className="border-b border-gray-200 text-gray-500">
+            <thead
+              className="border-b"
+              style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
+            >
               <tr>
-                <th scope="col" className="px-3 py-2 font-medium">Name</th>
-                <th scope="col" className="px-3 py-2 font-medium">Email</th>
-                <th scope="col" className="px-3 py-2 font-medium">Role</th>
-                <th scope="col" className="px-3 py-2 font-medium">Department</th>
-                <th scope="col" className="px-3 py-2 font-medium">Status</th>
-                <th scope="col" className="px-3 py-2">
+                <th scope="col" className="px-4 py-3 font-medium">Name</th>
+                <th scope="col" className="px-4 py-3 font-medium">Email</th>
+                <th scope="col" className="px-4 py-3 font-medium">Role</th>
+                <th scope="col" className="px-4 py-3 font-medium">Department</th>
+                <th scope="col" className="px-4 py-3 font-medium">Status</th>
+                <th scope="col" className="px-4 py-3">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-[var(--color-border)]">
               {showRows &&
                 result.items.map((u) => {
                   const blocked = toggleBlockedReason(u);
                   const action = u.isActive ? "Deactivate" : "Activate";
                   return (
                     <tr key={u._id}>
-                      <td className="px-3 py-2">{u.fullName}</td>
-                      <td className="px-3 py-2">{u.email}</td>
-                      <td className="px-3 py-2">{roleLabel(u.role)}</td>
-                      <td className="px-3 py-2">{departmentLabel(u)}</td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`rounded px-2 py-0.5 text-xs ${
-                            u.isActive ? "bg-green-100 text-green-800" : "bg-gray-200 text-gray-700"
-                          }`}
-                        >
-                          {u.isActive ? "Active" : "Inactive"}
-                        </span>
+                      <td className="px-4 py-3">{u.fullName}</td>
+                      <td className="px-4 py-3">{u.email}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="role" value={u.role} />
                       </td>
-                      <td className="px-3 py-2 text-right">
+                      <td className="px-4 py-3">{departmentLabel(u)}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="active" value={u.isActive} />
+                      </td>
+                      <td className="px-4 py-3 text-right">
                         {/* Visible reason next to the disabled button; aria-describedby ties it to the button for screen readers. */}
                         {blocked && (
-                          <span id={`blocked-${u._id}`} className="mr-3 text-xs text-gray-500">
+                          <span
+                            id={`blocked-${u._id}`}
+                            className="mr-3 text-xs"
+                            style={{ color: "var(--color-text-muted)" }}
+                          >
                             {blocked}
                           </span>
                         )}
-                        <button
+                        <Button
                           type="button"
+                          variant={u.isActive ? "danger" : "secondary"}
                           onClick={() => toggleActive(u)}
                           disabled={Boolean(blocked) || busyId === u._id}
                           aria-label={`${action} ${u.fullName}`}
                           aria-describedby={blocked ? `blocked-${u._id}` : undefined}
-                          className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40"
                         >
                           {action}
-                        </button>
+                        </Button>
                       </td>
                     </tr>
                   );
@@ -189,40 +196,48 @@ export default function Users() {
           </table>
         </div>
 
-        {showRows && result.items.length === 0 && <p className="p-4 text-sm text-gray-500">No users on this page.</p>}
+        {showRows && result.items.length === 0 && (
+          <p className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>
+            No users on this page.
+          </p>
+        )}
         {showLoadingText && (
-          <p role="status" className="p-4 text-sm text-gray-500">
+          <p role="status" className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>
             Loading...
           </p>
         )}
 
         {result && (
-          <nav aria-label="Pagination" className="flex items-center justify-between border-t border-gray-200 px-3 py-2 text-sm">
-            <span className="text-gray-600">
+          <nav
+            aria-label="Pagination"
+            className="flex items-center justify-between border-t px-4 py-3 text-sm"
+            style={{ borderColor: "var(--color-border)" }}
+          >
+            <span style={{ color: "var(--color-text-muted)" }}>
               Page {result.page} of {totalPages} &middot; {result.total} {result.total === 1 ? "user" : "users"}
             </span>
             <div className="flex gap-2">
               {/* Both buttons work from result.page (what is on screen), not from `page` (what was last requested). */}
-              <button
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => goToPage(result.page - 1)}
                 disabled={result.page <= 1 || loading}
-                className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-100 disabled:opacity-40"
               >
                 Previous
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant="secondary"
                 onClick={() => goToPage(result.page + 1)}
                 disabled={result.page >= totalPages || loading}
-                className="rounded border border-gray-300 px-3 py-1 hover:bg-gray-100 disabled:opacity-40"
               >
                 Next
-              </button>
+              </Button>
             </div>
           </nav>
         )}
-      </section>
+      </Card>
     </div>
   );
 }

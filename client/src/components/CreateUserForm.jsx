@@ -3,8 +3,11 @@ import { request } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
 import { ROLES, manageableRoles, roleLabel } from "../roles.js";
 import ErrorBanner from "./ErrorBanner.jsx";
+import Card from "./ui/Card.jsx";
+import Button from "./ui/Button.jsx";
 
-const inputClass = "mt-1 w-full rounded border border-gray-300 px-3 py-2 disabled:bg-gray-100 disabled:text-gray-500";
+const inputClass =
+  "mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2 disabled:bg-[var(--color-bg)] disabled:text-[var(--color-text-muted)]";
 
 // onStart runs when a submit begins, so the page can clear messages from earlier actions instead of leaving them next to the new result.
 export default function CreateUserForm({ departments, onStart, onCreated }) {
@@ -59,21 +62,20 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3 rounded border border-gray-200 bg-white p-4">
-      <h2 className="font-medium">Create user</h2>
+    <Card as="form" onSubmit={handleSubmit} title="Create user" className="space-y-3">
       <ErrorBanner error={error} focusOnShow />
 
       <div className="grid gap-3 md:grid-cols-2">
         <label className="block text-sm">
-          <span className="text-gray-700">First name</span>
+          <span>First name</span>
           <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClass} />
         </label>
         <label className="block text-sm">
-          <span className="text-gray-700">Last name</span>
+          <span>Last name</span>
           <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} />
         </label>
         <label className="block text-sm md:col-span-2">
-          <span className="text-gray-700">Email</span>
+          <span>Email</span>
           <input
             type="email"
             required
@@ -85,7 +87,7 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
         </label>
 
         <label className="block text-sm">
-          <span className="text-gray-700">Role</span>
+          <span>Role</span>
           <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClass}>
             {roleOptions.map((r) => (
               <option key={r} value={r}>
@@ -96,7 +98,7 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
         </label>
 
         <label className="block text-sm">
-          <span className="text-gray-700">Department</span>
+          <span>Department</span>
           <select
             value={department}
             onChange={(e) => setDepartment(e.target.value)}
@@ -116,9 +118,7 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
 
         {/* Not one big <label>: the "Show" checkbox has a label of its own, and labels must not nest. */}
         <div className="text-sm md:col-span-2">
-          <label htmlFor="temporaryPassword" className="text-gray-700">
-            Temporary password
-          </label>
+          <label htmlFor="temporaryPassword">Temporary password</label>
           <input
             id="temporaryPassword"
             type={showPassword ? "text" : "password"}
@@ -129,7 +129,7 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
             onChange={(e) => setPassword(e.target.value)}
             className={inputClass}
           />
-          <div className="mt-1 flex items-center justify-between text-xs text-gray-500">
+          <div className="mt-1 flex items-center justify-between text-xs" style={{ color: "var(--color-text-muted)" }}>
             <span>The user must change it at first sign-in. Share it securely.</span>
             <label className="flex items-center gap-1">
               <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />
@@ -137,16 +137,11 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
             </label>
           </div>
         </div>
-
       </div>
 
-      <button
-        type="submit"
-        disabled={submitting}
-        className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
-      >
+      <Button type="submit" variant="primary" disabled={submitting}>
         {submitting ? "Creating..." : "Create user"}
-      </button>
-    </form>
+      </Button>
+    </Card>
   );
 }
