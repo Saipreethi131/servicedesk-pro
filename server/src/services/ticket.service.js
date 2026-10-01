@@ -1,0 +1,292 @@
+import mongoose from "mongoose";
+import Ticket from "../models/Ticket.js";
+import Comment from "../models/Comment.js";
+import User from "../models/User.js";
+import Category from "../models/Category.js";
+import { ApiError } from "../utils/ApiError.js";
+import { ROLES, TICKET_STATUS, TICKET_STATUS_VALUES, PRIORITY_VALUES } from "../utils/constants.js";
+import { derivePriority } from "../utils/priority.js";
+import { canTransition } from "../utils/ticketTransitions.js";
+import { isObjectIdString } from "../utils/objectId.js";
+
+const fieldError = (field, message) => ApiError.badRequest(message, [{ field, message }]);
+
+// Body values can be objects or arrays ({ "$gt": "" }); require a real string before touching one.
+const requireString = (value, field) => {
+  if (typeof value !== "string") throw fieldError(field, `${field} must be a string`);
+  return value;
+};
+
+// Mongoose validation errors would otherwise reach errorHandler as a 500 (same convention as user.service.js).
+const mapValidationError = (err) => {
+  if (err instanceof mongoose.Error.ValidationError) {
+    throw ApiError.validation(
+      Object.values(err.errors).map((e) => ({
+        field: e.path,
+        message: e.name === "ValidatorError" ? e.message : "Invalid value",
+      }))
+    );
+  }
+  throw err;
+};
+
+// D6.4, as a filter for list queries. Throws rather than returning {} or a department-less filter for a non-admin
+// (same fail-closed shape as userScopeFilter in permissions.js).
+const ticketScopeFilter = (actor) => {
+  if (actor.role === ROLES.SYSTEM_ADMIN) return {};
+  if (actor.role === ROLES.IT_MANAGER) {
+    if (!actor.department) throw ApiError.forbidden();
+    return { department: actor.department };
+  }
+  if (actor.role === ROLES.TECHNICIAN || actor.role === ROLES.ASSET_MANAGER) {
+    if (!actor.department) throw ApiError.forbidden();
+    return { department: actor.department, $or: [{ assignee: actor._id }, { assignee: null }] };
+  }
+  if (actor.role === ROLES.EMPLOYEE) return { requester: actor._id };
+  throw ApiError.forbidden();
+};
+
+// D6.4, as a predicate against an already-loaded ticket (used where a single ticket, not a list, needs checking -
+// 404 if it doesn't exist, this decides the 403). Mirrors ticketScopeFilter's rules exactly.
+const isInTicketScope = (actor, ticket) => {
+  if (actor.role === ROLES.SYSTEM_ADMIN) return true;
+  if (actor.role === ROLES.IT_MANAGER) {
+    return Boolean(actor.department) && ticket.department.equals(actor.department);
+  }
+  if (actor.role === ROLES.TECHNICIAN || actor.role === ROLES.ASSET_MANAGER) {
+    if (!actor.department || !ticket.department.equals(actor.department)) return false;
+    return ticket.assignee === null || ticket.assignee.equals(actor._id);
+  }
+  if (actor.role === ROLES.EMPLOYEE) return ticket.requester.equals(actor._id);
+  return false;
+};
+
+const REQUESTER_ONLY_ROLES = [ROLES.EMPLOYEE, ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
+
+export const createTicket = async (actor, input) => {
+  const title = requireString(input.title, "title").trim();
+  if (title.length < 5 || title.length > 200) throw fieldError("title", "title must be 5-200 characters");
+
+  const description = requireString(input.description, "description").trim();
+  if (description.length < 10 || description.length > 5000) {
+    throw fieldError("description", "description must be 10-5000 characters");
+  }
+
+  if (!isObjectIdString(input.category)) throw fieldError("category", "category must be a valid id");
+
+  // derivePriority also validates impact/urgency (400, D5.1) - the single source of truth, not duplicated here.
+  const priority = derivePriority(input.impact, input.urgency);
+
+  // --- requester and department (D6.3 scoping note under createTicket) ---
+  let requesterId;
+  let department;
+
+  if (REQUESTER_ONLY_ROLES.includes(actor.role)) {
+    requesterId = actor._id;
+    department = actor.department;
+  } else {
+    // IT_MANAGER / SYSTEM_ADMIN may file on someone else's behalf.
+    if (input.requester !== undefined && input.requester !== null) {
+      if (!isObjectIdString(input.requester)) throw fieldError("requester", "requester must be a valid id");
+      const targetUser = await User.findById(input.requester);
+      if (!targetUser) throw fieldError("requester", "requester does not exist");
+      if (actor.role === ROLES.IT_MANAGER && !(targetUser.department && targetUser.department.equals(actor.department))) {
+        throw ApiError.forbidden("You can only file tickets for requesters in your own department");
+      }
+      requesterId = targetUser._id;
+      department = targetUser.department;
+    } else {
+      requesterId = actor._id;
+      department = actor.department;
+    }
+  }
+
+  // Covers both the EMPLOYEE/TECHNICIAN/ASSET_MANAGER case and an IT_MANAGER/SYSTEM_ADMIN filing for themselves
+  // with no department of their own - a ticket cannot exist without one either way.
+  if (!department) throw fieldError("department", "No department could be determined for this ticket");
+
+  // --- category: exists, active, a leaf (D5.4, D6.6) ---
+  const category = await Category.findById(input.category);
+  if (!category) throw ApiError.notFound("Category not found");
+  if (!category.isActive) {
+    throw ApiError.validation([{ field: "category", message: "Category is inactive" }], "Category is inactive");
+  }
+  // A top-level category only counts as a leaf while it has no children (D5.4); a child is always a leaf (depth 2 cap).
+  if (category.parent === null && (await Category.exists({ parent: category._id }))) {
+    throw ApiError.validation(
+      [{ field: "category", message: "Category must be a leaf category" }],
+      "Category must be a leaf category"
+    );
+  }
+
+  const now = new Date();
+  try {
+    // Named fields only, never a spread of input (D3.5-style convention). ticketNumber is set by the model's own
+    // pre('validate') hook; priority, status and history are decided here, never by the client.
+    const ticket = await Ticket.create({
+      title,
+      description,
+      requester: requesterId,
+      department,
+      category: category._id,
+      assignee: null,
+      status: TICKET_STATUS.NEW,
+      impact: input.impact,
+      urgency: input.urgency,
+      priority,
+      history: [{ from: null, to: TICKET_STATUS.NEW, by: actor._id, at: now }],
+    });
+    return ticket;
+  } catch (err) {
+    mapValidationError(err);
+  }
+};
+
+// Options arrive already validated by the controller (page/limit range, status/priority enum membership).
+export const listTickets = async (actor, { page, limit, status, priority }) => {
+  const filter = ticketScopeFilter(actor);
+  if (status !== undefined) filter.status = status;
+  // Filters on the stored `priority`, not priorityOverride.value (D6.5) - see the report for the trade-off.
+  if (priority !== undefined) filter.priority = priority;
+
+  const [items, total] = await Promise.all([
+    Ticket.find(filter)
+      .sort({ createdAt: -1, _id: -1 })
+      .skip((page - 1) * limit)
+      .limit(limit),
+    Ticket.countDocuments(filter),
+  ]);
+
+  return { items, page, limit, total };
+};
+
+// Deliberately fetched with no scope filter: 404 means it doesn't exist, 403 means it exists but is out of
+// scope (D3.4-style trade-off: a 403 reveals the id is real). id format is validated by the controller.
+export const getTicket = async (actor, id) => {
+  const ticket = await Ticket.findById(id);
+  if (!ticket) throw ApiError.notFound("Ticket not found");
+  if (!isInTicketScope(actor, ticket)) throw ApiError.forbidden("You do not have permission to view this ticket");
+  return ticket;
+};
+
+const ASSIGNABLE_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
+
+// id format and toStatus presence are validated by the controller; toStatus's enum membership is checked here.
+// `reason` is accepted (matches the agreed signature) but unused: no transition in D6.3 records one.
+export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason } = {}) => {
+  if (!TICKET_STATUS_VALUES.includes(toStatus)) throw fieldError("toStatus", "toStatus is not a valid status");
+
+  const ticket = await Ticket.findById(id);
+  if (!ticket) throw ApiError.notFound("Ticket not found");
+
+  // A manager assigning someone other than themselves: canTransition can't validate the target (note B), so this
+  // runs first and separately. Anything else (a self-claim, or no assigneeId at all) skips this block entirely.
+  const isManagerAssigningSomeoneElse =
+    toStatus === TICKET_STATUS.ASSIGNED &&
+    assigneeId !== undefined &&
+    assigneeId !== null &&
+    String(assigneeId) !== String(actor._id);
+
+  let resolvedAssigneeId;
+  if (isManagerAssigningSomeoneElse) {
+    if (!isObjectIdString(assigneeId)) throw fieldError("assigneeId", "assigneeId must be a valid id");
+    const target = await User.findById(assigneeId);
+    if (!target) throw fieldError("assigneeId", "assigneeId does not exist");
+    if (!ASSIGNABLE_ROLES.includes(target.role)) {
+      throw fieldError("assigneeId", "assignee must be a TECHNICIAN or ASSET_MANAGER");
+    }
+    if (!target.department || !target.department.equals(ticket.department)) {
+      throw ApiError.forbidden("You can only assign someone in the ticket's department");
+    }
+    resolvedAssigneeId = target._id;
+  }
+
+  if (!canTransition(ticket, actor, toStatus)) {
+    throw ApiError.forbidden(`Cannot transition from ${ticket.status} to ${toStatus}`);
+  }
+
+  const now = new Date();
+  const from = ticket.status; // captured before any assignment below
+
+  if (toStatus === TICKET_STATUS.REOPENED) {
+    // Note A: one logical step, never two. Never leaves status at REOPENED.
+    ticket.status = TICKET_STATUS.NEW;
+    ticket.assignee = null;
+    ticket.history.push({ from: TICKET_STATUS.RESOLVED, to: TICKET_STATUS.NEW, by: actor._id, at: now });
+  } else {
+    if (toStatus === TICKET_STATUS.RESOLVED) ticket.resolvedAt = now;
+    // self-claim (no assigneeId / assigneeId === actor._id) -> actor._id; manager-assigns -> the id validated above.
+    if (toStatus === TICKET_STATUS.ASSIGNED) ticket.assignee = resolvedAssigneeId ?? actor._id;
+    ticket.status = toStatus;
+    ticket.history.push({ from, to: toStatus, by: actor._id, at: now });
+  }
+
+  try {
+    await ticket.save();
+  } catch (err) {
+    mapValidationError(err);
+  }
+  return ticket;
+};
+
+// id format is validated by the controller; route-level authorize() already limits this to SYSTEM_ADMIN/IT_MANAGER.
+export const setPriorityOverride = async (actor, id, { value, reason }) => {
+  const ticket = await Ticket.findById(id);
+  if (!ticket) throw ApiError.notFound("Ticket not found");
+
+  if (actor.role === ROLES.IT_MANAGER) {
+    if (!actor.department || !ticket.department.equals(actor.department)) {
+      throw ApiError.forbidden("You can only override priority on tickets in your own department");
+    }
+  } // SYSTEM_ADMIN: unrestricted
+
+  if (!PRIORITY_VALUES.includes(value)) throw fieldError("value", "value is not a valid priority");
+  const trimmedReason = requireString(reason, "reason").trim();
+  if (trimmedReason.length === 0) throw fieldError("reason", "reason is required");
+
+  // priority itself is never touched (D5.2, D6.5); effective priority is computed by callers as priorityOverride.value ?? priority.
+  ticket.priorityOverride = { value, by: actor._id, reason: trimmedReason, at: new Date() };
+
+  try {
+    await ticket.save();
+  } catch (err) {
+    mapValidationError(err);
+  }
+  return ticket;
+};
+
+// Only these roles may mark a comment internal (D6.7).
+const STAFF_ROLES = [ROLES.SYSTEM_ADMIN, ROLES.IT_MANAGER, ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
+
+export const createComment = async (actor, ticketId, { body, isInternal }) => {
+  const ticket = await Ticket.findById(ticketId);
+  if (!ticket) throw ApiError.notFound("Ticket not found");
+  if (!isInTicketScope(actor, ticket)) throw ApiError.forbidden("You do not have permission to comment on this ticket");
+
+  const text = requireString(body, "body").trim();
+  if (text.length < 1 || text.length > 5000) throw fieldError("body", "body must be 1-5000 characters");
+
+  // An EMPLOYEE passing isInternal:true is silently forced to false, not rejected - see the report for the trade-off.
+  const internal = STAFF_ROLES.includes(actor.role) ? Boolean(isInternal) : false;
+
+  try {
+    return await Comment.create({ ticket: ticket._id, author: actor._id, body: text, isInternal: internal });
+  } catch (err) {
+    mapValidationError(err);
+  }
+};
+
+export const listComments = async (actor, ticketId) => {
+  const ticket = await Ticket.findById(ticketId);
+  if (!ticket) throw ApiError.notFound("Ticket not found");
+  if (!isInTicketScope(actor, ticket)) throw ApiError.forbidden("You do not have permission to view this ticket's comments");
+
+  const comments = await Comment.find({ ticket: ticket._id }).sort({ createdAt: 1 });
+
+  // isInTicketScope already guarantees an EMPLOYEE who got this far is the requester; checked explicitly anyway
+  // so the rule reads directly off D6.7 rather than relying on that guarantee holding elsewhere.
+  const isRequesterEmployee = actor.role === ROLES.EMPLOYEE && ticket.requester.equals(actor._id);
+  const items = isRequesterEmployee ? comments.filter((c) => !c.isInternal) : comments;
+
+  return { items };
+};
