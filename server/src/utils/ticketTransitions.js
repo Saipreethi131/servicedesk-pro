@@ -28,7 +28,11 @@ const actorId = (actor) => actor._id ?? actor.id;
 const inDepartment = (ticket, actor) => sameId(ticket.department, actor.department);
 const isAssignee = (ticket, actor) => sameId(ticket.assignee, actorId(actor));
 const isRequester = (ticket, actor) => sameId(ticket.requester, actorId(actor));
-const isManagerOf = (ticket, actor) => actor.role === ROLES.IT_MANAGER && inDepartment(ticket, actor);
+// SYSTEM_ADMIN bypasses the department check entirely (D3.9/D6.4: it has no department of its own, and - like
+// every other manager-tier rule in this codebase, D3.3 - manages any department). IT_MANAGER keeps the same
+// same-department requirement as before; nothing about that half changed.
+const isManagerOf = (ticket, actor) =>
+  actor.role === ROLES.SYSTEM_ADMIN || (actor.role === ROLES.IT_MANAGER && inDepartment(ticket, actor));
 
 const CLAIM_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
 
