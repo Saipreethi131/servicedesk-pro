@@ -3,10 +3,13 @@ import User from "../models/User.js";
 import RefreshToken from "../models/RefreshToken.js";
 import Department from "../models/Department.js";
 import Category from "../models/Category.js";
+import Ticket from "../models/Ticket.js";
+import Comment from "../models/Comment.js";
+import Counter from "../models/Counter.js";
 
 // Production runs with autoIndex off (config/db.js), so this script is how its indexes get built.
 // Nothing discovers models automatically: add every new model here.
-const MODELS = [User, RefreshToken, Department, Category];
+const MODELS = [User, RefreshToken, Department, Category, Ticket, Comment, Counter];
 
 const syncModel = async (Model) => {
   // Outside production Mongoose is already building these indexes in the background; wait for that

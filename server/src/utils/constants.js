@@ -33,3 +33,17 @@ export const PRIORITY = Object.freeze({
 export const IMPACT_VALUES = Object.freeze(Object.values(IMPACT));
 export const URGENCY_VALUES = Object.freeze(Object.values(URGENCY));
 export const PRIORITY_VALUES = Object.freeze(Object.values(PRIORITY));
+
+// Ticket lifecycle (D6.2). Order matches the CLAUDE.md diagram: the main line NEW..CLOSED, then the two branches.
+export const TICKET_STATUS = Object.freeze({
+  NEW: "NEW",
+  ASSIGNED: "ASSIGNED",
+  IN_PROGRESS: "IN_PROGRESS",
+  WAITING_ON_REQUESTER: "WAITING_ON_REQUESTER",
+  RESOLVED: "RESOLVED",
+  CLOSED: "CLOSED",
+  ESCALATED: "ESCALATED",
+  REOPENED: "REOPENED",
+});
+
+export const TICKET_STATUS_VALUES = Object.freeze(Object.values(TICKET_STATUS));
