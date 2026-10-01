@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { useAuth } from "../AuthContext.jsx";
-import { roleLabel } from "../roles.js";
 import useDocumentTitle from "../useDocumentTitle.js";
+import PageHeader from "../components/ui/PageHeader.jsx";
+import Card from "../components/ui/Card.jsx";
+import Badge from "../components/ui/Badge.jsx";
 
 export default function Dashboard() {
   useDocumentTitle("Dashboard");
@@ -18,21 +20,28 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-4">
+      <PageHeader title="Dashboard" />
+
       {notice && (
-        <p role="status" className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+        <p
+          role="status"
+          className="rounded-md border px-3 py-2 text-sm"
+          style={{ borderColor: "#fde68a", backgroundColor: "#fffbeb", color: "#92400e" }}
+        >
           {notice}
         </p>
       )}
-      <div className="rounded border border-gray-200 bg-white p-6">
-        <h1 className="text-xl font-semibold">Dashboard</h1>
-        <dl className="mt-4 grid grid-cols-[6rem_1fr] gap-y-2 text-sm">
-          <dt className="text-gray-500">Name</dt>
-          <dd>{user.fullName}</dd>
-          <dt className="text-gray-500">Role</dt>
-          <dd>{roleLabel(user.role)}</dd>
-          <dt className="text-gray-500">Email</dt>
-          <dd>{user.email}</dd>
-        </dl>
+
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card title="Name">
+          <p className="text-sm">{user.fullName}</p>
+        </Card>
+        <Card title="Role">
+          <Badge variant="role" value={user.role} />
+        </Card>
+        <Card title="Email">
+          <p className="text-sm">{user.email}</p>
+        </Card>
       </div>
     </div>
   );

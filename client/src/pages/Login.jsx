@@ -3,6 +3,8 @@ import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
 import useDocumentTitle from "../useDocumentTitle.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
+import Card from "../components/ui/Card.jsx";
+import Button from "../components/ui/Button.jsx";
 
 export default function Login() {
   useDocumentTitle("Sign in");
@@ -22,7 +24,7 @@ export default function Login() {
 
   if (loading) {
     return (
-      <p role="status" className="p-6 text-gray-500">
+      <p role="status" className="p-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
         Loading...
       </p>
     );
@@ -44,18 +46,22 @@ export default function Login() {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-      <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4 rounded border border-gray-200 bg-white p-6">
-        <h1 className="text-xl font-semibold">Sign in to ServiceDesk Pro</h1>
+    <div className="auth-shell">
+      <Card as="form" onSubmit={handleSubmit} className="auth-card space-y-4">
+        <h1 className="auth-card-title">Sign in to ServiceDesk Pro</h1>
         {endedMessage && (
-          <p role="status" className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p
+            role="status"
+            className="rounded-md border px-3 py-2 text-sm"
+            style={{ borderColor: "#fde68a", backgroundColor: "#fffbeb", color: "#92400e" }}
+          >
             {endedMessage}
           </p>
         )}
         <ErrorBanner error={error} focusOnShow />
 
         <label className="block text-sm">
-          <span className="text-gray-700">Email</span>
+          <span>Email</span>
           <input
             type="email"
             required
@@ -65,12 +71,12 @@ export default function Login() {
               setEmail(e.target.value);
               setEndedMessage(null);
             }}
-            className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+            className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2"
           />
         </label>
 
         <label className="block text-sm">
-          <span className="text-gray-700">Password</span>
+          <span>Password</span>
           <input
             type="password"
             required
@@ -80,18 +86,14 @@ export default function Login() {
               setPassword(e.target.value);
               setEndedMessage(null);
             }}
-            className="mt-1 w-full rounded border border-gray-300 px-3 py-2"
+            className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2"
           />
         </label>
 
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full rounded bg-blue-600 px-3 py-2 text-white hover:bg-blue-700 disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={submitting} className="w-full">
           {submitting ? "Signing in..." : "Sign in"}
-        </button>
-      </form>
+        </Button>
+      </Card>
     </div>
   );
 }

@@ -1,4 +1,6 @@
 import { Component } from "react";
+import Card from "./ui/Card.jsx";
+import Button from "./ui/Button.jsx";
 
 // Catches errors thrown while React renders its children; without one, a render crash unmounts the whole app
 // and leaves a white page. It cannot catch errors in event handlers or async code (those are shown by each page's
@@ -18,18 +20,16 @@ export default class ErrorBoundary extends Component {
     if (!this.state.failed) return this.props.children;
 
     return (
-      <div className="flex min-h-screen items-center justify-center bg-gray-50 px-4">
-        <div role="alert" className="w-full max-w-sm space-y-4 rounded border border-gray-200 bg-white p-6 text-center">
-          <h1 className="text-xl font-semibold">Something went wrong</h1>
-          <p className="text-sm text-gray-600">An unexpected error occurred. Reloading the page usually fixes it.</p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
-          >
+      <div className="auth-shell">
+        <Card role="alert" className="auth-card space-y-4 text-center">
+          <h1 className="auth-card-title">Something went wrong</h1>
+          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+            An unexpected error occurred. Reloading the page usually fixes it.
+          </p>
+          <Button type="button" variant="primary" onClick={() => window.location.reload()}>
             Reload
-          </button>
-        </div>
+          </Button>
+        </Card>
       </div>
     );
   }

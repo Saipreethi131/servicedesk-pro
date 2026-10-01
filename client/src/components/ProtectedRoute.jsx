@@ -8,9 +8,11 @@ export default function ProtectedRoute() {
   // Wait for the startup refresh: without this, a reload would bounce a logged-in user to /login for a moment.
   if (loading) {
     return (
-      <p role="status" className="p-6 text-gray-500">
-        Loading...
-      </p>
+      <div className="auth-shell">
+        <p role="status" className="text-sm" style={{ color: "var(--color-text-muted)" }}>
+          Loading...
+        </p>
+      </div>
     );
   }
 

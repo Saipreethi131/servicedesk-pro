@@ -1,1 +1,292 @@
 @import "tailwindcss";
+
+:root {
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-bg: #f8fafc;
+  --color-surface: #ffffff;
+  --color-border: #e2e8f0;
+  --color-text: #0f172a;
+  --color-text-muted: #64748b;
+
+  --color-success: #059669;
+  --color-danger: #dc2626;
+
+  /* Not used by any page yet (tickets land in P6) - defined now so Badge is ready for them. */
+  --color-priority-critical: #dc2626;
+  --color-priority-high: #ea580c;
+  --color-priority-medium: #d97706;
+  --color-priority-low: #64748b;
+
+  --color-status-new: #2563eb;
+  --color-status-assigned: #4f46e5;
+  --color-status-in_progress: #7c3aed;
+  --color-status-waiting_on_requester: #d97706;
+  --color-status-resolved: #059669;
+  --color-status-closed: #64748b;
+  --color-status-escalated: #dc2626;
+  --color-status-reopened: #ea580c;
+
+  --sidebar-width: 15rem;
+  --sidebar-width-collapsed: 4.5rem;
+}
+
+body {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+
+/* ---- Button ---- */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.btn-primary {
+  background-color: var(--color-primary);
+  color: #ffffff;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--color-primary-hover);
+}
+.btn-secondary {
+  background-color: var(--color-surface);
+  border-color: var(--color-border);
+  color: var(--color-text);
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--color-bg);
+}
+.btn-danger {
+  background-color: #ffffff;
+  border-color: #fca5a5;
+  color: var(--color-danger);
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: #fef2f2;
+}
+.btn-ghost {
+  background-color: transparent;
+  color: var(--color-text-muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  background-color: var(--color-border);
+  color: var(--color-text);
+}
+
+/* ---- Card ---- */
+
+.card {
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 0.5rem;
+  padding: 1.25rem;
+}
+.card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.875rem;
+}
+.card-title {
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* ---- Badge ----
+   --badge-color is set inline per instance (components/ui/Badge.jsx); color-mix tints it for the fill/border
+   so one hex per value covers all three layers instead of three variables per value. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.25rem;
+  white-space: nowrap;
+  color: var(--badge-color, var(--color-text-muted));
+  background-color: color-mix(in srgb, var(--badge-color, var(--color-text-muted)) 14%, white);
+  border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-text-muted)) 30%, white);
+}
+
+/* ---- PageHeader ---- */
+
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+.page-header-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+/* ---- Auth shell: Login, and ChangePassword when it stands alone during a forced change ---- */
+
+.auth-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--color-bg);
+  padding: 1rem;
+}
+.auth-card {
+  width: 100%;
+  max-width: 24rem;
+}
+.auth-card-title {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 1rem;
+}
+
+/* ---- App shell: sidebar + content, used by Layout.jsx ---- */
+
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+}
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+}
+.sidebar-brand {
+  padding: 1.25rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-border);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.sidebar-nav {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem 0.75rem;
+}
+.sidebar-group-label {
+  padding: 0.5rem 0.75rem 0.25rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.sidebar-link svg {
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+.sidebar-link:hover {
+  background-color: var(--color-bg);
+  color: var(--color-text);
+}
+.sidebar-link.active {
+  background-color: color-mix(in srgb, var(--color-primary) 10%, white);
+  color: var(--color-primary);
+  font-weight: 500;
+}
+.sidebar-link:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+.sidebar-footer {
+  border-top: 1px solid var(--color-border);
+  padding: 0.875rem 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+.sidebar-user {
+  flex: 1;
+  min-width: 0;
+}
+.sidebar-user-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.app-content {
+  flex: 1;
+  min-width: 0;
+  margin-left: var(--sidebar-width);
+}
+.app-content-inner {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem;
+}
+
+@media (max-width: 768px) {
+  .sidebar {
+    width: var(--sidebar-width-collapsed);
+  }
+  .sidebar-brand-text,
+  .sidebar-link-text,
+  .sidebar-group-label,
+  .sidebar-user {
+    display: none;
+  }
+  .sidebar-brand {
+    text-align: center;
+  }
+  .sidebar-link {
+    justify-content: center;
+  }
+  .sidebar-footer {
+    justify-content: center;
+  }
+  .app-content {
+    margin-left: var(--sidebar-width-collapsed);
+  }
+}
