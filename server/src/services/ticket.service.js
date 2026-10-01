@@ -11,6 +11,17 @@ import { isObjectIdString } from "../utils/objectId.js";
 
 const fieldError = (field, message) => ApiError.badRequest(message, [{ field, message }]);
 
+// Applied to every ticket returned to a client (list, single, create, transition, override), never before the
+// internal scope/transition checks that need the raw ids (isInTicketScope, canTransition, canOverridePriorityOn,
+// the .equals() calls in transitionTicket) - those must run against plain ObjectIds, not populated sub-documents.
+// priorityOverride.by and history[].by are deliberately left as raw ids: they're an audit trail, not display fields.
+const TICKET_POPULATE = [
+  { path: "requester", select: "firstName lastName email" },
+  { path: "assignee", select: "firstName lastName email" }, // stays null when unassigned; populate is a no-op on null
+  { path: "department", select: "name" },
+  { path: "category", select: "name" },
+];
+
 // Body values can be objects or arrays ({ "$gt": "" }); require a real string before touching one.
 const requireString = (value, field) => {
   if (typeof value !== "string") throw fieldError(field, `${field} must be a string`);
@@ -141,6 +152,7 @@ export const createTicket = async (actor, input) => {
       priority,
       history: [{ from: null, to: TICKET_STATUS.NEW, by: actor._id, at: now }],
     });
+    await ticket.populate(TICKET_POPULATE);
     return ticket;
   } catch (err) {
     mapValidationError(err);
@@ -158,7 +170,8 @@ export const listTickets = async (actor, { page, limit, status, priority }) => {
     Ticket.find(filter)
       .sort({ createdAt: -1, _id: -1 })
       .skip((page - 1) * limit)
-      .limit(limit),
+      .limit(limit)
+      .populate(TICKET_POPULATE),
     Ticket.countDocuments(filter),
   ]);
 
@@ -177,14 +190,15 @@ export const getTicket = async (actor, id) => {
   if (!ticket) throw ApiError.notFound("Ticket not found");
   if (!isInTicketScope(actor, ticket)) throw ApiError.forbidden("You do not have permission to view this ticket");
 
+  // Computed from the raw-id ticket, before populate below swaps requester/assignee/department/category for
+  // sub-documents: canTransition and canOverridePriorityOn both rely on comparing plain ObjectIds.
   const availableTransitions = TICKET_STATUS_VALUES.filter((status) => canTransition(ticket, actor, status));
+  const canOverridePriority = canOverridePriorityOn(actor, ticket);
+  const canComment = isInTicketScope(actor, ticket);
 
-  return {
-    ...ticket.toJSON(),
-    availableTransitions,
-    canOverridePriority: canOverridePriorityOn(actor, ticket),
-    canComment: isInTicketScope(actor, ticket),
-  };
+  await ticket.populate(TICKET_POPULATE);
+
+  return { ...ticket.toJSON(), availableTransitions, canOverridePriority, canComment };
 };
 
 const ASSIGNABLE_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
@@ -244,6 +258,7 @@ export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason
   } catch (err) {
     mapValidationError(err);
   }
+  await ticket.populate(TICKET_POPULATE);
   return ticket;
 };
 
@@ -268,6 +283,7 @@ export const setPriorityOverride = async (actor, id, { value, reason }) => {
   } catch (err) {
     mapValidationError(err);
   }
+  await ticket.populate(TICKET_POPULATE);
   return ticket;
 };
 
