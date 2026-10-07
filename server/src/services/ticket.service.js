@@ -57,23 +57,28 @@ const mapValidationError = (err) => {
 
 // D6.4, as a filter for list queries. Throws rather than returning {} or a department-less filter for a non-admin
 // (same fail-closed shape as userScopeFilter in permissions.js).
+// The requester of a ticket always sees it, whatever their role (D6.10), so staff scopes are { requester OR role scope }.
 const ticketScopeFilter = (actor) => {
+  const own = { requester: actor._id };
   if (actor.role === ROLES.SYSTEM_ADMIN) return {};
+  if (actor.role === ROLES.EMPLOYEE) return own;
   if (actor.role === ROLES.IT_MANAGER) {
-    if (!actor.department) throw ApiError.forbidden();
-    return { department: actor.department };
+    if (!actor.department) return own; // no department -> no department scope, but their own tickets still show
+    return { $or: [own, { department: actor.department }] };
   }
   if (actor.role === ROLES.TECHNICIAN || actor.role === ROLES.ASSET_MANAGER) {
-    if (!actor.department) throw ApiError.forbidden();
-    return { department: actor.department, $or: [{ assignee: actor._id }, { assignee: null }] };
+    if (!actor.department) return own;
+    return {
+      $or: [own, { department: actor.department, $or: [{ assignee: actor._id }, { assignee: null }] }],
+    };
   }
-  if (actor.role === ROLES.EMPLOYEE) return { requester: actor._id };
   throw ApiError.forbidden();
 };
 
 // D6.4, as a predicate against an already-loaded ticket (used where a single ticket, not a list, needs checking -
 // 404 if it doesn't exist, this decides the 403). Mirrors ticketScopeFilter's rules exactly.
 const isInTicketScope = (actor, ticket) => {
+  if (ticket.requester.equals(actor._id)) return true; // D6.10: the requester is always in scope
   if (actor.role === ROLES.SYSTEM_ADMIN) return true;
   if (actor.role === ROLES.IT_MANAGER) {
     return Boolean(actor.department) && ticket.department.equals(actor.department);
@@ -332,10 +337,14 @@ export const createComment = async (actor, ticketId, { body, isInternal }) => {
   const text = requireString(body, "body").trim();
   if (text.length < 1 || text.length > 5000) throw fieldError("body", "body must be 1-5000 characters");
 
-  if (isInternal && !STAFF_ROLES.includes(actor.role)) {
+  // Strict: only a real boolean or absent. Boolean("false") would be true, so no coercion.
+  if (isInternal !== undefined && typeof isInternal !== "boolean") {
+    throw fieldError("isInternal", "isInternal must be true or false");
+  }
+  const internal = isInternal === true;
+  if (internal && !STAFF_ROLES.includes(actor.role)) {
     throw fieldError("isInternal", "Only staff can create internal comments");
   }
-  const internal = Boolean(isInternal);
 
   try {
     return await Comment.create({ ticket: ticket._id, author: actor._id, body: text, isInternal: internal });
