@@ -6,9 +6,7 @@ oversee it all under two-dimensional role-and-department access control. It's a 
 from the server skeleton up through a working ticket lifecycle, SLA-driven auto-escalation, and a live deployment.
 
 ## Live demo
-
-- **Frontend:** https://servicedesk-pro-b45.vercel.app
-- **Backend health check:** https://servicedesk-pro-54bs.onrender.com/api/v1/health
+https://servicedesk-pro-b45.vercel.app
 
 > The backend is on Render's free tier, which sleeps when idle. The **first** request after a period of
 > inactivity can take up to ~50 seconds to wake it up — the frontend shows a "waking up" screen while it waits,
