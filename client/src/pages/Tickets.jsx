@@ -15,13 +15,6 @@ const formatDate = (iso) =>
 
 const selectClass = "mt-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-sm";
 
-// Pure client-side comparison against resolutionDeadline, already present on every ticket (P8) - no extra fetch.
-// A ticket that's already ESCALATED, RESOLVED or CLOSED isn't "overdue" anymore in any useful sense: ESCALATED
-// means the sweep already caught it, and the other two mean the clock stopped mattering.
-const OVERDUE_EXEMPT_STATUSES = ["ESCALATED", "RESOLVED", "CLOSED"];
-const isOverdue = (t) =>
-  Boolean(t.resolutionDeadline) && !OVERDUE_EXEMPT_STATUSES.includes(t.status) && new Date(t.resolutionDeadline).getTime() < Date.now();
-
 // Clicks on these inside a row keep their own behaviour instead of opening the ticket.
 const INTERACTIVE = "a, button, input, select, textarea, label";
 
@@ -193,7 +186,7 @@ export default function Tickets() {
                               (overridden)
                             </span>
                           )}
-                          {isOverdue(t) && (
+                          {t.isOverdue && (
                             <span
                               className="text-xs font-medium"
                               style={{ color: "var(--color-danger)" }}

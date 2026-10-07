@@ -46,11 +46,6 @@ const categoryPath = (category) => {
   return category.parent?.name ? `${category.parent.name} › ${category.name}` : category.name;
 };
 
-// Pure client-side comparison against resolutionDeadline (P8), same rule as Tickets.jsx's list indicator.
-const OVERDUE_EXEMPT_STATUSES = ["ESCALATED", "RESOLVED", "CLOSED"];
-const isOverdue = (t) =>
-  Boolean(t.resolutionDeadline) && !OVERDUE_EXEMPT_STATUSES.includes(t.status) && new Date(t.resolutionDeadline).getTime() < Date.now();
-
 export default function TicketDetail() {
   const { id } = useParams();
   const { user } = useAuth();
@@ -246,7 +241,7 @@ export default function TicketDetail() {
                   (overridden)
                 </span>
               )}
-              {isOverdue(ticket) && (
+              {ticket.isOverdue && (
                 <span
                   className="text-xs font-medium"
                   style={{ color: "var(--color-danger)" }}
@@ -319,7 +314,7 @@ export default function TicketDetail() {
             </dt>
             <dd className="flex items-center gap-2">
               {ticket.resolutionDeadline ? formatDateTime(ticket.resolutionDeadline) : "-"}
-              {isOverdue(ticket) && (
+              {ticket.isOverdue && (
                 <span className="text-xs font-medium" style={{ color: "var(--color-danger)" }}>
                   ● Overdue
                 </span>

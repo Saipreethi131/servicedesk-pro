@@ -103,6 +103,14 @@ const canOverridePriorityOn = (actor, ticket) =>
   actor.role === ROLES.SYSTEM_ADMIN ||
   (actor.role === ROLES.IT_MANAGER && Boolean(actor.department) && ticket.department.equals(actor.department));
 
+// The one overdue definition (D6.17): a resolution deadline before `now` on a ticket whose status is not in
+// SLA_EXEMPT_STATUSES. Two forms of the same rule, both built from that constant so they cannot drift: a predicate for a
+// loaded ticket (list items, full-ticket responses) and the $match for the stats aggregation. `now` is passed in so one
+// response uses a single instant for every ticket.
+const isTicketOverdue = (ticket, now) =>
+  Boolean(ticket.resolutionDeadline) && !SLA_EXEMPT_STATUSES.includes(ticket.status) && ticket.resolutionDeadline < now;
+const overdueMatch = (now) => ({ resolutionDeadline: { $lt: now }, status: { $nin: SLA_EXEMPT_STATUSES } });
+
 const REQUESTER_ONLY_ROLES = [ROLES.EMPLOYEE, ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
 
 // The one rule for who an actor may file a ticket on behalf of (D6.14), as a user query filter. Used by
@@ -238,7 +246,8 @@ export const listTickets = async (actor, { page, limit, status, priority }) => {
   // Filters on the stored `priority`, not priorityOverride.value (D6.5) - see the report for the trade-off.
   if (priority !== undefined) filter.priority = priority;
 
-  const [items, total] = await Promise.all([
+  const now = new Date(); // one instant for every row in this response
+  const [docs, total] = await Promise.all([
     Ticket.find(filter)
       .sort({ createdAt: -1, _id: -1 })
       .skip((page - 1) * limit)
@@ -248,13 +257,14 @@ export const listTickets = async (actor, { page, limit, status, priority }) => {
     Ticket.countDocuments(filter),
   ]);
 
+  const items = docs.map((doc) => ({ ...doc.toJSON(), isOverdue: isTicketOverdue(doc, now) }));
   return { items, page, limit, total };
 };
 
 // Dashboard counts. One aggregation, so counting never loads ticket documents into Node and stays correct at any
 // ticket volume (the old client-side count silently stopped at its fetch limit). $match uses the same scope filter as
-// listTickets, so a number can never include a ticket the actor could not list. Overdue (D6.17) = resolution deadline in
-// the past and status not in SLA_EXEMPT_STATUSES, the same rule the escalation sweep acts on.
+// listTickets, so a number can never include a ticket the actor could not list. Overdue uses overdueMatch (the same
+// definition as isTicketOverdue, built from SLA_EXEMPT_STATUSES, which the escalation sweep also acts on).
 export const getTicketStats = async (actor) => {
   const [facets] = await Ticket.aggregate([
     { $match: ticketScopeFilter(actor) },
@@ -262,7 +272,7 @@ export const getTicketStats = async (actor) => {
       $facet: {
         byStatus: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
         overdue: [
-          { $match: { resolutionDeadline: { $lt: new Date() }, status: { $nin: SLA_EXEMPT_STATUSES } } },
+          { $match: overdueMatch(new Date()) },
           { $count: "count" },
         ],
       },
@@ -309,7 +319,7 @@ const presentTicket = async (actor, ticket) => {
 
   const json = ticket.toJSON();
   json.history = json.history.map((h) => ({ ...h, by: nameOf(h.by) }));
-  return { ...json, availableTransitions, canOverridePriority, canComment };
+  return { ...json, availableTransitions, canOverridePriority, canComment, isOverdue: isTicketOverdue(ticket, new Date()) };
 };
 
 const ASSIGNABLE_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
