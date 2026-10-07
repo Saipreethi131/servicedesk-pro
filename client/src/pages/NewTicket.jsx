@@ -9,6 +9,9 @@ import Card from "../components/ui/Card.jsx";
 import Button from "../components/ui/Button.jsx";
 import Badge from "../components/ui/Badge.jsx";
 
+const REQUESTER_MIN_CHARS = 2;
+const REQUESTER_DEBOUNCE_MS = 300;
+
 const inputClass = "mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2";
 
 export default function NewTicket() {
@@ -28,7 +31,10 @@ export default function NewTicket() {
   const [childCategoryId, setChildCategoryId] = useState("");
   const [impact, setImpact] = useState("");
   const [urgency, setUrgency] = useState("");
-  const [requesterId, setRequesterId] = useState("");
+  const [requester, setRequester] = useState(null); // chosen { _id, name, role, department }; null = file for myself
+  const [requesterQuery, setRequesterQuery] = useState("");
+  const [requesterResults, setRequesterResults] = useState(null); // null = nothing searched yet / too short
+  const [requesterError, setRequesterError] = useState(null);
   const [error, setError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -51,6 +57,27 @@ export default function NewTicket() {
       ignore = true;
     };
   }, []);
+
+  // Debounced search of the server's requester-options (the server decides who is eligible, D6.14). Only runs for
+  // actors who see the picker, only once something is typed, and ignores a response that a newer keystroke superseded.
+  useEffect(() => {
+    const q = requesterQuery.trim();
+    setRequesterError(null);
+    if (!canFileForSomeoneElse || requester || q.length < REQUESTER_MIN_CHARS) {
+      setRequesterResults(null);
+      return undefined;
+    }
+    let ignore = false;
+    const timer = setTimeout(() => {
+      request(`/tickets/requester-options?q=${encodeURIComponent(q)}`)
+        .then(({ data }) => !ignore && setRequesterResults(data.items))
+        .catch((err) => !ignore && setRequesterError(err));
+    }, REQUESTER_DEBOUNCE_MS);
+    return () => {
+      ignore = true;
+      clearTimeout(timer);
+    };
+  }, [requesterQuery, requester, canFileForSomeoneElse]);
 
   const selectedTop = useMemo(() => categories?.find((c) => c._id === topCategoryId) ?? null, [categories, topCategoryId]);
   const hasChildren = Boolean(selectedTop?.children?.length);
@@ -78,7 +105,7 @@ export default function NewTicket() {
           category: leafCategoryId,
           impact,
           urgency,
-          ...(canFileForSomeoneElse && requesterId.trim() && { requester: requesterId.trim() }),
+          ...(canFileForSomeoneElse && requester && { requester: requester._id }),
         },
       });
       // Prompt 6 builds the detail page next; the link is live even though that page doesn't exist yet.
@@ -198,15 +225,53 @@ export default function NewTicket() {
         </div>
 
         {canFileForSomeoneElse && (
-          <label className="block text-sm">
-            <span>File on behalf of (requester user id, optional)</span>
-            <input
-              value={requesterId}
-              onChange={(e) => setRequesterId(e.target.value)}
-              placeholder="Leave blank to file this ticket for yourself"
-              className={inputClass}
-            />
-          </label>
+          <div className="text-sm">
+            <span>File on behalf of</span>
+            {requester ? (
+              <div className="mt-1 flex items-center gap-2">
+                <span>
+                  {requester.name} ({requester.role}, {requester.department?.name ?? "no department"})
+                </span>
+                <Button type="button" variant="ghost" onClick={() => setRequester(null)}>
+                  Change
+                </Button>
+              </div>
+            ) : (
+              <>
+                <input
+                  value={requesterQuery}
+                  onChange={(e) => setRequesterQuery(e.target.value)}
+                  placeholder="Myself - or type a name to search"
+                  aria-label="Search for a requester"
+                  className={inputClass}
+                />
+                <ErrorBanner error={requesterError} />
+                {requesterResults &&
+                  (requesterResults.length === 0 ? (
+                    <p className="mt-1" style={{ color: "var(--color-text-muted)" }}>
+                      No matching users
+                    </p>
+                  ) : (
+                    <ul className="mt-1 rounded-md border border-[var(--color-border)]">
+                      {requesterResults.map((u) => (
+                        <li key={u._id}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRequester(u);
+                              setRequesterQuery("");
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-black/5"
+                          >
+                            {u.name} ({u.role}, {u.department?.name ?? "no department"})
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ))}
+              </>
+            )}
+          </div>
         )}
 
         <Button type="submit" variant="primary" disabled={submitting || !leafCategoryId}>

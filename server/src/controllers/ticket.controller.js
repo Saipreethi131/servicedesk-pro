@@ -78,6 +78,17 @@ export const getTicket = async (req, res) => {
   sendSuccess(res, { message: "Ticket retrieved", data: { ticket } });
 };
 
+const MAX_SEARCH_LENGTH = 100;
+
+export const listRequesterOptions = async (req, res) => {
+  const { q } = pickAllowed(req.query, ["q"]); // unknown params -> 400 naming them
+  if (q !== undefined && requireQueryString(q, "q").length > MAX_SEARCH_LENGTH) {
+    throw badParam("q", `q must be at most ${MAX_SEARCH_LENGTH} characters`);
+  }
+  const items = await ticketService.listRequesterOptions(req.user, q);
+  sendSuccess(res, { message: "Requester options retrieved", data: { items } });
+};
+
 export const listAssignableUsers = async (req, res) => {
   const id = requireIdParam(req.params.id);
   const items = await ticketService.listAssignableUsers(req.user, id);

@@ -98,6 +98,47 @@ const canOverridePriorityOn = (actor, ticket) =>
 
 const REQUESTER_ONLY_ROLES = [ROLES.EMPLOYEE, ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
 
+// The one rule for who an actor may file a ticket on behalf of (D6.14), as a user query filter. Used by
+// listRequesterOptions (the picker) and createTicket (what the server accepts), so they cannot disagree.
+// SYSTEM_ADMIN: any active user who has a department (a ticket cannot exist without one). IT_MANAGER: any active
+// user in the manager's own department. Everyone else, and an IT_MANAGER with no department, files only for
+// themselves: 403 (fail closed, never a department-less filter).
+const requesterEligibilityFilter = (actor) => {
+  if (actor.role === ROLES.SYSTEM_ADMIN) return { isActive: true, department: { $ne: null } };
+  if (actor.role === ROLES.IT_MANAGER && actor.department) return { isActive: true, department: actor.department };
+  throw ApiError.forbidden("You cannot file tickets on behalf of other users");
+};
+
+const escapeRegex = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const MAX_REQUESTER_OPTIONS = 20;
+
+// `q` arrives validated as a string (or undefined) by the controller. Every whitespace-separated term must appear
+// somewhere in the first or last name, so "eli emp" finds "Eli Employee". Terms are regex-escaped: user input is
+// never interpreted as a pattern.
+export const listRequesterOptions = async (actor, q) => {
+  const filter = requesterEligibilityFilter(actor);
+  const terms = (q ?? "").trim().split(/\s+/).filter(Boolean);
+  if (terms.length) {
+    filter.$and = terms.map((term) => {
+      const re = new RegExp(escapeRegex(term), "i");
+      return { $or: [{ firstName: re }, { lastName: re }] };
+    });
+  }
+
+  const users = await User.find(filter)
+    .select("firstName lastName role department")
+    .populate("department", "name")
+    .sort({ firstName: 1, lastName: 1, _id: 1 })
+    .limit(MAX_REQUESTER_OPTIONS)
+    .lean();
+  return users.map((u) => ({
+    _id: u._id,
+    name: `${u.firstName} ${u.lastName}`,
+    role: u.role,
+    department: u.department ? { _id: u.department._id, name: u.department.name } : null,
+  }));
+};
+
 export const createTicket = async (actor, input) => {
   const title = requireString(input.title, "title").trim();
   if (title.length < 5 || title.length > 200) throw fieldError("title", "title must be 5-200 characters");
@@ -123,11 +164,9 @@ export const createTicket = async (actor, input) => {
     // IT_MANAGER / SYSTEM_ADMIN may file on someone else's behalf.
     if (input.requester !== undefined && input.requester !== null) {
       if (!isObjectIdString(input.requester)) throw fieldError("requester", "requester must be a valid id");
-      const targetUser = await User.findById(input.requester);
-      if (!targetUser) throw fieldError("requester", "requester does not exist");
-      if (actor.role === ROLES.IT_MANAGER && !(targetUser.department && targetUser.department.equals(actor.department))) {
-        throw ApiError.forbidden("You can only file tickets for requesters in your own department");
-      }
+      // Same filter as the requester-options picker: active, and inside the actor's reach (D6.14).
+      const targetUser = await User.findOne({ _id: input.requester, ...requesterEligibilityFilter(actor) });
+      if (!targetUser) throw fieldError("requester", "requester is not an eligible requester");
       requesterId = targetUser._id;
       department = targetUser.department;
     } else {
