@@ -283,6 +283,17 @@ export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason
     throw ApiError.forbidden(`Cannot transition from ${ticket.status} to ${toStatus}`);
   }
 
+  // A TECHNICIAN/ASSET_MANAGER may only claim for themselves (D6.3). canTransition lets them reach ASSIGNED but cannot
+  // see the target, so this permission rule lives here, before target validation: 403, not a 400 field error.
+  if (
+    toStatus === TICKET_STATUS.ASSIGNED &&
+    ASSIGNABLE_ROLES.includes(actor.role) &&
+    assigneeId != null &&
+    String(assigneeId) !== String(actor._id)
+  ) {
+    throw ApiError.forbidden("You can only assign a ticket to yourself");
+  }
+
   // Every assignment, including one where the assignee is the actor, passes the same eligibility rule as the
   // assignable-users list. Runs after canTransition so a caller who may not assign at all gets 403, not a probe of ids.
   let resolvedAssigneeId;
