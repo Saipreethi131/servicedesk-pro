@@ -29,6 +29,17 @@
 
   --sidebar-width: 15rem;
   --sidebar-width-collapsed: 4.5rem;
+
+  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.06);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.06);
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+
+  --transition-fast: 150ms ease;
+  --transition-base: 200ms ease;
 }
 
 body {
@@ -44,21 +55,25 @@ body {
   justify-content: center;
   gap: 0.375rem;
   padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   font-weight: 500;
   line-height: 1.25rem;
   border: 1px solid transparent;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast),
+    color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
 }
 .btn:disabled {
   cursor: not-allowed;
   opacity: 0.5;
 }
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
 .btn:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 35%, transparent);
 }
 .btn-primary {
   background-color: var(--color-primary);
@@ -66,6 +81,12 @@ body {
 }
 .btn-primary:hover:not(:disabled) {
   background-color: var(--color-primary-hover);
+  box-shadow: var(--shadow-md);
+  transform: translateY(-1px);
+}
+.btn-primary:active:not(:disabled) {
+  box-shadow: var(--shadow-sm);
+  transform: translateY(0);
 }
 .btn-secondary {
   background-color: var(--color-surface);
@@ -97,8 +118,17 @@ body {
 .card {
   background-color: var(--color-surface);
   border: 1px solid var(--color-border);
-  border-radius: 0.5rem;
-  padding: 1.25rem;
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow var(--transition-base), transform var(--transition-base);
+}
+.card-interactive {
+  cursor: pointer;
+}
+.card-interactive:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 .card-header {
   display: flex;
@@ -129,6 +159,7 @@ body {
   color: var(--badge-color, var(--color-text-muted));
   background-color: color-mix(in srgb, var(--badge-color, var(--color-text-muted)) 14%, white);
   border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-text-muted)) 30%, white);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ---- PageHeader ---- */
@@ -138,12 +169,44 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.5rem;
+  margin-bottom: 2rem;
 }
 .page-header-title {
-  font-size: 1.5rem;
-  font-weight: 600;
+  font-size: 1.75rem;
+  font-weight: 700;
   color: var(--color-text);
+}
+
+/* ---- Table: shared by every data table (Users today; Departments/Categories can opt in the same way) ---- */
+
+.table {
+  width: 100%;
+  text-align: left;
+  font-size: 0.875rem;
+}
+.table thead {
+  border-bottom: 1px solid var(--color-border);
+}
+.table th {
+  padding: 0.875rem 1rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.table td {
+  padding: 0.875rem 1rem;
+}
+.table tbody tr {
+  border-bottom: 1px solid var(--color-border);
+  transition: background-color var(--transition-fast);
+}
+.table tbody tr:last-child {
+  border-bottom: none;
+}
+.table tbody tr:hover {
+  background-color: var(--color-bg);
 }
 
 /* ---- Auth shell: Login, and ChangePassword when it stands alone during a forced change ---- */
@@ -213,11 +276,13 @@ body {
   align-items: center;
   gap: 0.75rem;
   padding: 0.5rem 0.75rem;
-  border-radius: 0.375rem;
+  border-radius: var(--radius-sm);
   font-size: 0.875rem;
   color: var(--color-text-muted);
   text-decoration: none;
   white-space: nowrap;
+  box-shadow: inset 3px 0 0 0 transparent;
+  transition: background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 .sidebar-link svg {
   width: 1.125rem;
@@ -232,6 +297,7 @@ body {
   background-color: color-mix(in srgb, var(--color-primary) 10%, white);
   color: var(--color-primary);
   font-weight: 500;
+  box-shadow: inset 3px 0 0 0 var(--color-primary);
 }
 .sidebar-link:focus-visible {
   outline: 2px solid var(--color-primary);

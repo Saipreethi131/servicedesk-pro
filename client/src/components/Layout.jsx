@@ -28,10 +28,23 @@ const UsersIcon = () => (
     <path d="M15.5 14.2c2.6.5 4.5 2.8 4.5 5.8" />
   </svg>
 );
+const TicketsIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+    <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8z" />
+    <path d="M10 6v12" strokeDasharray="2 2" />
+  </svg>
+);
 const DepartmentsIcon = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
     <path d="M4 21V9l8-5 8 5v12" />
     <path d="M9 21v-6h6v6" />
+  </svg>
+);
+const CategoriesIcon = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+    <rect x="3" y="4" width="7" height="7" rx="1" />
+    <path d="M6.5 11v4a2 2 0 0 0 2 2H13" />
+    <rect x="13" y="13" width="7" height="7" rx="1" />
   </svg>
 );
 
@@ -83,7 +96,8 @@ export default function Layout() {
   // Same rules as before (and as the API): just which links render, not how access is enforced.
   const showUsers = user.role === ROLES.SYSTEM_ADMIN || user.role === ROLES.IT_MANAGER;
   const showDepartments = user.role === ROLES.SYSTEM_ADMIN;
-  const showAdminGroup = showUsers || showDepartments;
+  const showCategories = user.role === ROLES.SYSTEM_ADMIN;
+  const showAdminGroup = showUsers || showDepartments || showCategories;
 
   return (
     <div className="app-shell">
@@ -96,6 +110,10 @@ export default function Layout() {
           <NavLink to="/" end className={navLinkClass}>
             <DashboardIcon />
             <span className="sidebar-link-text">Dashboard</span>
+          </NavLink>
+          <NavLink to="/tickets" className={navLinkClass}>
+            <TicketsIcon />
+            <span className="sidebar-link-text">Tickets</span>
           </NavLink>
           <NavLink to="/change-password" className={navLinkClass}>
             <PasswordIcon />
@@ -113,6 +131,12 @@ export default function Layout() {
             <NavLink to="/departments" className={navLinkClass}>
               <DepartmentsIcon />
               <span className="sidebar-link-text">Departments</span>
+            </NavLink>
+          )}
+          {showCategories && (
+            <NavLink to="/categories" className={navLinkClass}>
+              <CategoriesIcon />
+              <span className="sidebar-link-text">Categories</span>
             </NavLink>
           )}
         </nav>

@@ -134,40 +134,37 @@ export default function Users() {
 
       <Card className="!p-0 overflow-hidden">
         <div className="overflow-x-auto">
-          <table className={`w-full text-left text-sm ${loading ? "opacity-60" : ""}`}>
+          <table className={`table ${loading ? "opacity-60" : ""}`}>
             <caption className="sr-only">Users</caption>
-            <thead
-              className="border-b"
-              style={{ borderColor: "var(--color-border)", color: "var(--color-text-muted)" }}
-            >
+            <thead>
               <tr>
-                <th scope="col" className="px-4 py-3 font-medium">Name</th>
-                <th scope="col" className="px-4 py-3 font-medium">Email</th>
-                <th scope="col" className="px-4 py-3 font-medium">Role</th>
-                <th scope="col" className="px-4 py-3 font-medium">Department</th>
-                <th scope="col" className="px-4 py-3 font-medium">Status</th>
-                <th scope="col" className="px-4 py-3">
+                <th scope="col">Name</th>
+                <th scope="col">Email</th>
+                <th scope="col">Role</th>
+                <th scope="col">Department</th>
+                <th scope="col">Status</th>
+                <th scope="col">
                   <span className="sr-only">Actions</span>
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-[var(--color-border)]">
+            <tbody>
               {showRows &&
                 result.items.map((u) => {
                   const blocked = toggleBlockedReason(u);
                   const action = u.isActive ? "Deactivate" : "Activate";
                   return (
                     <tr key={u._id}>
-                      <td className="px-4 py-3">{u.fullName}</td>
-                      <td className="px-4 py-3">{u.email}</td>
-                      <td className="px-4 py-3">
+                      <td>{u.fullName}</td>
+                      <td>{u.email}</td>
+                      <td>
                         <Badge variant="role" value={u.role} />
                       </td>
-                      <td className="px-4 py-3">{departmentLabel(u)}</td>
-                      <td className="px-4 py-3">
+                      <td>{departmentLabel(u)}</td>
+                      <td>
                         <Badge variant="active" value={u.isActive} />
                       </td>
-                      <td className="px-4 py-3 text-right">
+                      <td className="text-right">
                         {/* Visible reason next to the disabled button; aria-describedby ties it to the button for screen readers. */}
                         {blocked && (
                           <span
