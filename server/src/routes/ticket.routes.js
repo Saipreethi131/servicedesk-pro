@@ -11,7 +11,8 @@ router.use(authenticate());
 
 router.post("/", ticketController.createTicket);
 router.get("/", ticketController.listTickets);
-// Before /:id, or "requester-options" would be read as a ticket id.
+// Before /:id, or "requester-options" and "stats" would be read as ticket ids.
+router.get("/stats", ticketController.getTicketStats);
 router.get("/requester-options", ticketController.listRequesterOptions);
 router.get("/:id", ticketController.getTicket);
 router.get("/:id/assignable-users", ticketController.listAssignableUsers);

@@ -72,6 +72,12 @@ export const listTickets = async (req, res) => {
   sendSuccess(res, { message: "Tickets retrieved", data: result });
 };
 
+export const getTicketStats = async (req, res) => {
+  pickAllowed(req.query, []); // no parameters: unknown ones -> 400 naming them
+  const stats = await ticketService.getTicketStats(req.user);
+  sendSuccess(res, { message: "Ticket stats retrieved", data: stats });
+};
+
 export const getTicket = async (req, res) => {
   const id = requireIdParam(req.params.id);
   const ticket = await ticketService.getTicket(req.user, id);

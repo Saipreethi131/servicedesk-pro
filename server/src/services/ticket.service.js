@@ -251,6 +251,34 @@ export const listTickets = async (actor, { page, limit, status, priority }) => {
   return { items, page, limit, total };
 };
 
+// Overdue (D6.17): a resolution deadline in the past on a ticket that is not finished or already escalated. The same
+// rule the Dashboard used to apply client-side, and the one the escalation sweep (slaEscalation.js) acts on.
+const OVERDUE_EXEMPT_STATUSES = [TICKET_STATUS.RESOLVED, TICKET_STATUS.CLOSED, TICKET_STATUS.ESCALATED];
+
+// Dashboard counts. One aggregation, so counting never loads ticket documents into Node and stays correct at any
+// ticket volume (the old client-side count silently stopped at its fetch limit). $match uses the same scope filter as
+// listTickets, so a number can never include a ticket the actor could not list.
+export const getTicketStats = async (actor) => {
+  const [facets] = await Ticket.aggregate([
+    { $match: ticketScopeFilter(actor) },
+    {
+      $facet: {
+        byStatus: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
+        overdue: [
+          { $match: { resolutionDeadline: { $lt: new Date() }, status: { $nin: OVERDUE_EXEMPT_STATUSES } } },
+          { $count: "count" },
+        ],
+      },
+    },
+  ]);
+
+  // Every status appears, in enum order, with 0 where there are none; the client never keeps its own list.
+  const byStatus = Object.fromEntries(TICKET_STATUS_VALUES.map((status) => [status, 0]));
+  for (const { _id, count } of facets.byStatus) if (_id in byStatus) byStatus[_id] = count;
+  const total = Object.values(byStatus).reduce((sum, n) => sum + n, 0);
+  return { byStatus, overdue: facets.overdue[0]?.count ?? 0, total };
+};
+
 // Deliberately fetched with no scope filter: 404 means it doesn't exist, 403 means it exists but is out of
 // scope (D3.4-style trade-off: a 403 reveals the id is real). id format is validated by the controller.
 //
