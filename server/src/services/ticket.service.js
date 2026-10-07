@@ -241,8 +241,16 @@ const presentTicket = async (actor, ticket) => {
 
 const ASSIGNABLE_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
 
-// Who the actor may pick as assignee for this ticket: the same rule transitionTicket enforces on assigneeId (role in
-// ASSIGNABLE_ROLES, same department as the ticket, active), so the client never re-implements it. Ticket lookup and
+// The one assignee-eligibility rule (D6.13): active TECHNICIAN or ASSET_MANAGER in the ticket's department. Used as a
+// query filter by both listAssignableUsers (the picker) and transitionTicket (what the server accepts), so the two
+// cannot disagree.
+const assignableUserFilter = (ticket) => ({
+  role: { $in: ASSIGNABLE_ROLES },
+  department: ticket.department,
+  isActive: true,
+});
+
+// Who the actor may pick as assignee for this ticket, so the client never re-implements the rule. Ticket lookup and
 // scope check match getTicket (404 / 403). Only a manager of the ticket (SYSTEM_ADMIN, or IT_MANAGER in its
 // department) picks someone else; canTransition(..., ASSIGNED) covers both "is a manager of it" and "ticket is
 // assignable right now". A technician's self-claim needs no list, so they get 403 here.
@@ -256,7 +264,7 @@ export const listAssignableUsers = async (actor, id) => {
     throw ApiError.forbidden("You cannot assign this ticket");
   }
 
-  const users = await User.find({ role: { $in: ASSIGNABLE_ROLES }, department: ticket.department, isActive: true })
+  const users = await User.find(assignableUserFilter(ticket))
     .select("firstName lastName role")
     .sort({ firstName: 1, lastName: 1 })
     .lean();
@@ -271,30 +279,19 @@ export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason
   const ticket = await Ticket.findById(id);
   if (!ticket) throw ApiError.notFound("Ticket not found");
 
-  // A manager assigning someone other than themselves: canTransition can't validate the target (note B), so this
-  // runs first and separately. Anything else (a self-claim, or no assigneeId at all) skips this block entirely.
-  const isManagerAssigningSomeoneElse =
-    toStatus === TICKET_STATUS.ASSIGNED &&
-    assigneeId !== undefined &&
-    assigneeId !== null &&
-    String(assigneeId) !== String(actor._id);
-
-  let resolvedAssigneeId;
-  if (isManagerAssigningSomeoneElse) {
-    if (!isObjectIdString(assigneeId)) throw fieldError("assigneeId", "assigneeId must be a valid id");
-    const target = await User.findById(assigneeId);
-    if (!target || !target.isActive) throw fieldError("assigneeId", "assigneeId does not exist");
-    if (!ASSIGNABLE_ROLES.includes(target.role)) {
-      throw fieldError("assigneeId", "assignee must be a TECHNICIAN or ASSET_MANAGER");
-    }
-    if (!target.department || !target.department.equals(ticket.department)) {
-      throw ApiError.forbidden("You can only assign someone in the ticket's department");
-    }
-    resolvedAssigneeId = target._id;
-  }
-
   if (!canTransition(ticket, actor, toStatus)) {
     throw ApiError.forbidden(`Cannot transition from ${ticket.status} to ${toStatus}`);
+  }
+
+  // Every assignment, including one where the assignee is the actor, passes the same eligibility rule as the
+  // assignable-users list. Runs after canTransition so a caller who may not assign at all gets 403, not a probe of ids.
+  let resolvedAssigneeId;
+  if (toStatus === TICKET_STATUS.ASSIGNED) {
+    const candidate = assigneeId ?? String(actor._id); // no assigneeId = self-claim (still validated below)
+    if (!isObjectIdString(candidate)) throw fieldError("assigneeId", "assigneeId must be a valid id");
+    const target = await User.findOne({ _id: candidate, ...assignableUserFilter(ticket) }).select("_id");
+    if (!target) throw fieldError("assigneeId", "assigneeId is not an eligible assignee for this ticket");
+    resolvedAssigneeId = target._id;
   }
 
   const now = new Date();
@@ -314,8 +311,8 @@ export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason
     ticket.history.push({ from: TICKET_STATUS.RESOLVED, to: TICKET_STATUS.NEW, by: actor._id, at: now });
   } else {
     if (toStatus === TICKET_STATUS.RESOLVED) ticket.resolvedAt = now;
-    // self-claim (no assigneeId / assigneeId === actor._id) -> actor._id; manager-assigns -> the id validated above.
-    if (toStatus === TICKET_STATUS.ASSIGNED) ticket.assignee = resolvedAssigneeId ?? actor._id;
+    // the assignee validated above (the actor themself on a self-claim).
+    if (toStatus === TICKET_STATUS.ASSIGNED) ticket.assignee = resolvedAssigneeId;
     ticket.status = toStatus;
     ticket.history.push({ from, to: toStatus, by: actor._id, at: now });
   }
