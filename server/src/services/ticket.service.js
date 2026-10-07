@@ -4,9 +4,10 @@ import Comment from "../models/Comment.js";
 import User from "../models/User.js";
 import Category from "../models/Category.js";
 import { ApiError } from "../utils/ApiError.js";
-import { ROLES, TICKET_STATUS, TICKET_STATUS_VALUES, PRIORITY_VALUES } from "../utils/constants.js";
+import { ROLES, TICKET_STATUS, TICKET_STATUS_VALUES, PRIORITY_VALUES, SLA_TARGETS } from "../utils/constants.js";
 import { derivePriority } from "../utils/priority.js";
 import { canTransition } from "../utils/ticketTransitions.js";
+import { addBusinessMinutes } from "../utils/businessHours.js";
 import { isObjectIdString } from "../utils/objectId.js";
 
 const fieldError = (field, message) => ApiError.badRequest(message, [{ field, message }]);
@@ -136,6 +137,12 @@ export const createTicket = async (actor, input) => {
   }
 
   const now = new Date();
+  // Snapshotted now, in business minutes (P8) - never recomputed later, so editing SLA_TARGETS never rewrites
+  // an existing ticket's deadlines (CLAUDE.md).
+  const slaTarget = SLA_TARGETS[priority];
+  const responseDeadline = addBusinessMinutes(now, slaTarget.responseMins);
+  const resolutionDeadline = addBusinessMinutes(now, slaTarget.resolutionMins);
+
   try {
     // Named fields only, never a spread of input (D3.5-style convention). ticketNumber is set by the model's own
     // pre('validate') hook; priority, status and history are decided here, never by the client.
@@ -150,6 +157,8 @@ export const createTicket = async (actor, input) => {
       impact: input.impact,
       urgency: input.urgency,
       priority,
+      responseDeadline,
+      resolutionDeadline,
       history: [{ from: null, to: TICKET_STATUS.NEW, by: actor._id, at: now }],
     });
     await ticket.populate(TICKET_POPULATE);
@@ -239,6 +248,13 @@ export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason
 
   const now = new Date();
   const from = ticket.status; // captured before any assignment below
+
+  // First activity on the ticket, of any kind (P8's response SLA) - toStatus is never actually 'NEW' (nothing
+  // transitions into it; REOPENED is the request value for that case), so this fires on every successful call
+  // the first time, exactly as asked, even though the comparison is structurally always true in practice.
+  if (ticket.firstResponseAt === null && toStatus !== TICKET_STATUS.NEW) {
+    ticket.firstResponseAt = now;
+  }
 
   if (toStatus === TICKET_STATUS.REOPENED) {
     // Note A: one logical step, never two. Never leaves status at REOPENED.

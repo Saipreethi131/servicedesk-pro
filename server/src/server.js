@@ -1,6 +1,7 @@
 import app from "./app.js";
 import { env } from "./config/env.js";
 import { connectDB, disconnectDB } from "./config/db.js";
+import { runEscalationSweep } from "./utils/slaEscalation.js";
 
 // Connect first so the server never accepts traffic it can't serve.
 await connectDB();
@@ -9,12 +10,21 @@ const server = app.listen(env.port, () => {
   console.log(`Server running in ${env.nodeEnv} mode on port ${env.port}`);
 });
 
+const ESCALATION_SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+// Errors are caught and logged here, not left to reject: an uncaught rejection from inside a setInterval
+// callback would hit the unhandledRejection handler below and shut the whole server down over one bad sweep.
+const escalationInterval = setInterval(() => {
+  runEscalationSweep().catch((err) => console.error("SLA escalation sweep failed:", err));
+}, ESCALATION_SWEEP_INTERVAL_MS);
+
 let shuttingDown = false;
 
 const shutdown = (reason, exitCode) => {
   if (shuttingDown) return; // a second signal must not start a second shutdown
   shuttingDown = true;
   console.log(`\n${reason} received. Shutting down gracefully...`);
+
+  clearInterval(escalationInterval);
 
   // Stop accepting new connections and let in-flight requests finish, then exit.
   // Close the DB only after HTTP has drained, so in-flight requests can still query.

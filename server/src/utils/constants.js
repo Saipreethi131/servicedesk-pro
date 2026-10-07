@@ -47,3 +47,13 @@ export const TICKET_STATUS = Object.freeze({
 });
 
 export const TICKET_STATUS_VALUES = Object.freeze(Object.values(TICKET_STATUS));
+
+// SLA targets per effective priority (P8), in business minutes - fed through addBusinessMinutes, never treated
+// as wall-clock minutes. Deadlines are snapshotted onto the ticket at creation (CLAUDE.md): changing these later
+// never rewrites an existing ticket's deadlines.
+export const SLA_TARGETS = Object.freeze({
+  CRITICAL: Object.freeze({ responseMins: 60, resolutionMins: 240 }),
+  HIGH: Object.freeze({ responseMins: 120, resolutionMins: 480 }),
+  MEDIUM: Object.freeze({ responseMins: 240, resolutionMins: 1440 }),
+  LOW: Object.freeze({ responseMins: 480, resolutionMins: 4320 }),
+});

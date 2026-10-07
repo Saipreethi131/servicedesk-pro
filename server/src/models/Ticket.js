@@ -53,6 +53,12 @@ const ticketSchema = new mongoose.Schema(
     priority: { type: String, enum: PRIORITY_VALUES, required: true },
     priorityOverride: { type: priorityOverrideSchema, default: null }, // never overwrites priority; effective value = priorityOverride.value ?? priority (D6.5)
     resolvedAt: { type: Date, default: null },
+    // Snapshotted at creation from SLA_TARGETS[priority] via addBusinessMinutes (P8); editing SLA_TARGETS later
+    // never rewrites an existing ticket's deadlines (CLAUDE.md).
+    responseDeadline: { type: Date },
+    resolutionDeadline: { type: Date },
+    firstResponseAt: { type: Date, default: null },
+    escalatedAt: { type: Date, default: null },
     history: { type: [historyEntrySchema], default: [] },
   },
   { timestamps: true }

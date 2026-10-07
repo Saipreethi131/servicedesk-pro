@@ -13,6 +13,10 @@ export const errorHandler = (err, req, res, _next) => {
   let message = "Internal server error";
   let errors = [];
   let code = null;
+  // The driver's own err.stack for an 11000 embeds its message, which embeds keyValue (the submitted value,
+  // e.g. an email address) - the same thing errors/message above are already careful never to echo. So this
+  // one error type never gets a stack field below, dev mode or not; every other branch is unaffected.
+  let suppressStack = false;
 
   if (err instanceof ApiError && err.isOperational) {
     ({ statusCode, message, errors, code } = err);
@@ -23,6 +27,7 @@ export const errorHandler = (err, req, res, _next) => {
     statusCode = 409;
     message = fields.length ? `${fields.join(", ")} already exists` : "Duplicate value";
     errors = fields.map((field) => ({ field, message: `${field} already exists` }));
+    suppressStack = true;
   } else if (err.type === "entity.parse.failed") {
     // express.json() couldn't parse the body: the client sent malformed JSON.
     statusCode = 400;
@@ -43,7 +48,7 @@ export const errorHandler = (err, req, res, _next) => {
     message,
     errors,
     ...(code && { code }), // only when set, so existing responses keep their exact shape
-    // A stack trace reveals file paths and code structure; development only.
-    ...(env.isDevelopment && { stack: err.stack }),
+    // A stack trace reveals file paths and code structure; development only. Never for 11000 (see suppressStack above).
+    ...(env.isDevelopment && !suppressStack && { stack: err.stack }),
   });
 };
