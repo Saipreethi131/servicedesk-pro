@@ -30,9 +30,14 @@ const STAFF_ROLES = [ROLES.SYSTEM_ADMIN, ROLES.IT_MANAGER, ROLES.TECHNICIAN, ROL
 const formatDateTime = (iso) =>
   new Date(iso).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
-// history[].by and Comment.author are raw ids, not populated (see the report) - shown as a shortened, clearly
-// technical id rather than faking a name, with the full id in a title tooltip.
-const shortId = (id) => (typeof id === "string" && id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : String(id));
+// history[].by and Comment.author arrive as { name, role } (D6.9). Falls back for a legacy raw id string (shortened,
+// clearly technical, rather than faking a name) and for null, which means a system action such as auto-escalation.
+const shortId = (id) => (id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
+const displayName = (who) => {
+  if (who == null) return "System";
+  if (typeof who === "string") return `User ${shortId(who)}`;
+  return who.name || "Unknown user";
+};
 
 // Pure client-side comparison against resolutionDeadline (P8), same rule as Tickets.jsx's list indicator.
 const OVERDUE_EXEMPT_STATUSES = ["ESCALATED", "RESOLVED", "CLOSED"];
@@ -424,7 +429,7 @@ export default function TicketDetail() {
                 {h.from ? h.from.replaceAll("_", " ") : "Created"} &rarr; {h.to.replaceAll("_", " ")}
               </div>
               <div className="text-xs" style={muted}>
-                by <span title={h.by}>User {shortId(h.by)}</span> &middot; {formatDateTime(h.at)}
+                by {displayName(h.by)} &middot; {formatDateTime(h.at)}
               </div>
             </li>
           ))}
@@ -453,7 +458,7 @@ export default function TicketDetail() {
                     Internal
                   </span>
                   <span className="text-xs" style={muted}>
-                    by <span title={c.author}>User {shortId(c.author)}</span> &middot; {formatDateTime(c.createdAt)}
+                    by {displayName(c.author)} &middot; {formatDateTime(c.createdAt)}
                   </span>
                 </div>
                 <p className="text-sm whitespace-pre-wrap">{c.body}</p>
@@ -461,7 +466,7 @@ export default function TicketDetail() {
             ) : (
               <div key={c._id} className="rounded-md border p-3" style={{ borderColor: "var(--color-border)" }}>
                 <div className="mb-1 text-xs" style={muted}>
-                  by <span title={c.author}>User {shortId(c.author)}</span> &middot; {formatDateTime(c.createdAt)}
+                  by {displayName(c.author)} &middot; {formatDateTime(c.createdAt)}
                 </div>
                 <p className="text-sm whitespace-pre-wrap">{c.body}</p>
               </div>
@@ -484,7 +489,7 @@ export default function TicketDetail() {
           {canMarkInternal && (
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={commentIsInternal} onChange={(e) => setCommentIsInternal(e.target.checked)} />
-              Internal note (not visible to the requester)
+              Internal note (staff only)
             </label>
           )}
           <Button type="submit" variant="primary" disabled={commentSubmitting}>

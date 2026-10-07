@@ -15,13 +15,26 @@ const fieldError = (field, message) => ApiError.badRequest(message, [{ field, me
 // Applied to every ticket returned to a client (list, single, create, transition, override), never before the
 // internal scope/transition checks that need the raw ids (isInTicketScope, canTransition, canOverridePriorityOn,
 // the .equals() calls in transitionTicket) - those must run against plain ObjectIds, not populated sub-documents.
-// priorityOverride.by and history[].by are deliberately left as raw ids: they're an audit trail, not display fields.
+// priorityOverride.by stays a raw id. history[].by and Comment.author are resolved to { name, role } by
+// attachUserNames below, only on the read paths (getTicket, listComments) - see D6.9.
 const TICKET_POPULATE = [
   { path: "requester", select: "firstName lastName email" },
   { path: "assignee", select: "firstName lastName email" }, // stays null when unassigned; populate is a no-op on null
   { path: "department", select: "name" },
   { path: "category", select: "name" },
 ];
+
+// Resolves user ids to display-only { name, role }. Not populate(): populate yields null both for a system action
+// (by: null, e.g. SLA escalation) and for a user that no longer exists, and the two must read differently.
+// Selects only firstName/lastName/role, so email and auth fields can never reach the response. lean() skips the
+// document wrapper (and its toJSON/virtuals) because we shape the output ourselves.
+const loadUserNames = async (ids) => {
+  const unique = [...new Set(ids.filter(Boolean).map(String))];
+  const users = unique.length ? await User.find({ _id: { $in: unique } }).select("firstName lastName role").lean() : [];
+  const byId = new Map(users.map((u) => [String(u._id), { name: `${u.firstName} ${u.lastName}`, role: u.role }]));
+  // null stays null (system); an id with no matching user becomes "Unknown user".
+  return (id) => (id ? (byId.get(String(id)) ?? { name: "Unknown user" }) : null);
+};
 
 // Body values can be objects or arrays ({ "$gt": "" }); require a real string before touching one.
 const requireString = (value, field) => {
@@ -205,9 +218,14 @@ export const getTicket = async (actor, id) => {
   const canOverridePriority = canOverridePriorityOn(actor, ticket);
   const canComment = isInTicketScope(actor, ticket);
 
+  // Read before populate, same reason as above; history[].by is still a raw ObjectId (or null) here.
+  const nameOf = await loadUserNames(ticket.history.map((h) => h.by));
+
   await ticket.populate(TICKET_POPULATE);
 
-  return { ...ticket.toJSON(), availableTransitions, canOverridePriority, canComment };
+  const json = ticket.toJSON();
+  json.history = json.history.map((h) => ({ ...h, by: nameOf(h.by) }));
+  return { ...json, availableTransitions, canOverridePriority, canComment };
 };
 
 const ASSIGNABLE_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
@@ -336,7 +354,11 @@ export const listComments = async (actor, ticketId) => {
   // isInTicketScope already guarantees an EMPLOYEE who got this far is the requester; checked explicitly anyway
   // so the rule reads directly off D6.7 rather than relying on that guarantee holding elsewhere.
   const isRequesterEmployee = actor.role === ROLES.EMPLOYEE && ticket.requester.equals(actor._id);
-  const items = isRequesterEmployee ? comments.filter((c) => !c.isInternal) : comments;
+  const visible = isRequesterEmployee ? comments.filter((c) => !c.isInternal) : comments;
+
+  // Names are looked up only for comments that survived the internal filter above.
+  const nameOf = await loadUserNames(visible.map((c) => c.author));
+  const items = visible.map((c) => ({ ...c.toJSON(), author: nameOf(c.author) }));
 
   return { items };
 };
