@@ -39,6 +39,13 @@ const displayName = (who) => {
   return who.name || "Unknown user";
 };
 
+// category arrives as { name, parent: { name } | null } (parent null = top-level). Tolerates a missing category or a
+// legacy shape without a parent rather than crashing.
+const categoryPath = (category) => {
+  if (!category?.name) return "Unknown category";
+  return category.parent?.name ? `${category.parent.name} › ${category.name}` : category.name;
+};
+
 // Pure client-side comparison against resolutionDeadline (P8), same rule as Tickets.jsx's list indicator.
 const OVERDUE_EXEMPT_STATUSES = ["ESCALATED", "RESOLVED", "CLOSED"];
 const isOverdue = (t) =>
@@ -295,12 +302,10 @@ export default function TicketDetail() {
             <dd>{ticket.department.name}</dd>
           </div>
           <div>
-            {/* The category populate only selects `name` (server-side), so a parent/child chain isn't available
-                here - showing just the name rather than faking "Parent / Child". See the report. */}
             <dt className="text-xs" style={muted}>
               Category
             </dt>
-            <dd>{ticket.category.name}</dd>
+            <dd>{categoryPath(ticket.category)}</dd>
           </div>
           <div>
             <dt className="text-xs" style={muted}>

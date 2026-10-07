@@ -24,6 +24,13 @@ const TICKET_POPULATE = [
   { path: "category", select: "name" },
 ];
 
+// Full-ticket responses (presentTicket) also resolve the category's parent, so the client can show "Parent > Child".
+// Categories are a 2-level tree (D5.4), so one nested populate is enough. No isActive filter on purpose: a parent
+// deactivated after the ticket was filed is still historical context for it. The list keeps the plain TICKET_POPULATE.
+const TICKET_DETAIL_POPULATE = TICKET_POPULATE.map((p) =>
+  p.path === "category" ? { ...p, select: "name parent", populate: { path: "parent", select: "name" } } : p
+);
+
 // Resolves user ids to display-only { name, role }. Not populate(): populate yields null both for a system action
 // (by: null, e.g. SLA escalation) and for a user that no longer exists, and the two must read differently.
 // Selects only firstName/lastName/role, so email and auth fields can never reach the response. lean() skips the
@@ -271,7 +278,7 @@ const presentTicket = async (actor, ticket) => {
   // Read before populate, same reason as above; history[].by is still a raw ObjectId (or null) here.
   const nameOf = await loadUserNames(ticket.history.map((h) => h.by));
 
-  await ticket.populate(TICKET_POPULATE);
+  await ticket.populate(TICKET_DETAIL_POPULATE);
 
   const json = ticket.toJSON();
   json.history = json.history.map((h) => ({ ...h, by: nameOf(h.by) }));
