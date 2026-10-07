@@ -243,6 +243,7 @@ export const listTickets = async (actor, { page, limit, status, priority }) => {
       .sort({ createdAt: -1, _id: -1 })
       .skip((page - 1) * limit)
       .limit(limit)
+      .select("-history") // the list UI never shows it; excluded in the query so Mongo never sends it (full shape: getTicket)
       .populate(TICKET_POPULATE),
     Ticket.countDocuments(filter),
   ]);
