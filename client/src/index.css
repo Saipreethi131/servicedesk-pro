@@ -208,6 +208,10 @@ body {
 .table tbody tr:hover {
   background-color: var(--color-bg);
 }
+/* A whole row that acts as a link (Tickets list); the real <a> inside stays the keyboard/middle-click target. */
+.table tbody tr.row-link {
+  cursor: pointer;
+}
 
 /* ---- Auth shell: Login, and ChangePassword when it stands alone during a forced change ---- */
 

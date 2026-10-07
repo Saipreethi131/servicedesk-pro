@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { request } from "../api.js";
 import useDocumentTitle from "../useDocumentTitle.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
@@ -22,8 +22,27 @@ const OVERDUE_EXEMPT_STATUSES = ["ESCALATED", "RESOLVED", "CLOSED"];
 const isOverdue = (t) =>
   Boolean(t.resolutionDeadline) && !OVERDUE_EXEMPT_STATUSES.includes(t.status) && new Date(t.resolutionDeadline).getTime() < Date.now();
 
+// Clicks on these inside a row keep their own behaviour instead of opening the ticket.
+const INTERACTIVE = "a, button, input, select, textarea, label";
+
 export default function Tickets() {
   useDocumentTitle("Tickets");
+  const navigate = useNavigate();
+  // Row click = open the ticket. The ticket-number <Link> remains the accessible, keyboard and middle-click path
+  // (the row itself is deliberately not focusable, so there is one tab stop per ticket, not two).
+  const handleRowClick = (event, ticketId) => {
+    const row = event.currentTarget;
+    const hit = event.target.closest(INTERACTIVE);
+    if (hit && row.contains(hit)) return; // a link, button or form control handles its own click
+    if (window.getSelection()?.toString()) return; // the user is selecting text, not opening
+    if (event.ctrlKey || event.metaKey) {
+      // Read the href off the row's own <Link>, so the new tab gets exactly the URL the link would.
+      window.open(row.querySelector("a[href]").href, "_blank", "noopener");
+      return;
+    }
+    navigate(`/tickets/${ticketId}`);
+  };
+
   const [page, setPage] = useState(1); // the page last REQUESTED; the page on screen is result.page (see Users.jsx)
   const [reloadKey, setReloadKey] = useState(0);
   const [statusFilter, setStatusFilter] = useState("");
@@ -152,7 +171,7 @@ export default function Tickets() {
                   const effectivePriority = t.priorityOverride?.value ?? t.priority;
                   const hasOverride = Boolean(t.priorityOverride);
                   return (
-                    <tr key={t._id}>
+                    <tr key={t._id} className="row-link" onClick={(e) => handleRowClick(e, t._id)}>
                       <td>
                         <Link to={`/tickets/${t._id}`} style={{ color: "var(--color-primary)" }}>
                           TKT-{t.ticketNumber}
