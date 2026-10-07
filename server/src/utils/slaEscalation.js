@@ -1,9 +1,5 @@
 import Ticket from "../models/Ticket.js";
-import { TICKET_STATUS } from "./constants.js";
-
-// RESOLVED/CLOSED are done; ESCALATED is already escalated. REOPENED is never actually a persisted status
-// (transitionTicket rewrites it to NEW in the same step - Note A), so it needs no entry here.
-const EXEMPT_STATUSES = [TICKET_STATUS.RESOLVED, TICKET_STATUS.CLOSED, TICKET_STATUS.ESCALATED];
+import { TICKET_STATUS, SLA_EXEMPT_STATUSES } from "./constants.js";
 
 // No req/res: callable from the interval in server.js or a one-off script. Idempotent on repeat calls - once a
 // ticket is ESCALATED, the query above excludes it, so a second sweep (run immediately after, or because the
@@ -12,7 +8,7 @@ export const runEscalationSweep = async () => {
   const now = new Date();
   const overdue = await Ticket.find({
     resolutionDeadline: { $lt: now },
-    status: { $nin: EXEMPT_STATUSES },
+    status: { $nin: SLA_EXEMPT_STATUSES },
   });
 
   for (const ticket of overdue) {

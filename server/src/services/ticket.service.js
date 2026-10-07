@@ -4,7 +4,7 @@ import Comment from "../models/Comment.js";
 import User from "../models/User.js";
 import Category from "../models/Category.js";
 import { ApiError } from "../utils/ApiError.js";
-import { ROLES, TICKET_STATUS, TICKET_STATUS_VALUES, PRIORITY_VALUES, SLA_TARGETS } from "../utils/constants.js";
+import { ROLES, TICKET_STATUS, TICKET_STATUS_VALUES, PRIORITY_VALUES, SLA_TARGETS, RESTING_STATUS_VALUES, SLA_EXEMPT_STATUSES } from "../utils/constants.js";
 import { derivePriority } from "../utils/priority.js";
 import { canTransition } from "../utils/ticketTransitions.js";
 import { addBusinessMinutes } from "../utils/businessHours.js";
@@ -251,13 +251,10 @@ export const listTickets = async (actor, { page, limit, status, priority }) => {
   return { items, page, limit, total };
 };
 
-// Overdue (D6.17): a resolution deadline in the past on a ticket that is not finished or already escalated. The same
-// rule the Dashboard used to apply client-side, and the one the escalation sweep (slaEscalation.js) acts on.
-const OVERDUE_EXEMPT_STATUSES = [TICKET_STATUS.RESOLVED, TICKET_STATUS.CLOSED, TICKET_STATUS.ESCALATED];
-
 // Dashboard counts. One aggregation, so counting never loads ticket documents into Node and stays correct at any
 // ticket volume (the old client-side count silently stopped at its fetch limit). $match uses the same scope filter as
-// listTickets, so a number can never include a ticket the actor could not list.
+// listTickets, so a number can never include a ticket the actor could not list. Overdue (D6.17) = resolution deadline in
+// the past and status not in SLA_EXEMPT_STATUSES, the same rule the escalation sweep acts on.
 export const getTicketStats = async (actor) => {
   const [facets] = await Ticket.aggregate([
     { $match: ticketScopeFilter(actor) },
@@ -265,17 +262,18 @@ export const getTicketStats = async (actor) => {
       $facet: {
         byStatus: [{ $group: { _id: "$status", count: { $sum: 1 } } }],
         overdue: [
-          { $match: { resolutionDeadline: { $lt: new Date() }, status: { $nin: OVERDUE_EXEMPT_STATUSES } } },
+          { $match: { resolutionDeadline: { $lt: new Date() }, status: { $nin: SLA_EXEMPT_STATUSES } } },
           { $count: "count" },
         ],
       },
     },
   ]);
 
-  // Every status appears, in enum order, with 0 where there are none; the client never keeps its own list.
-  const byStatus = Object.fromEntries(TICKET_STATUS_VALUES.map((status) => [status, 0]));
-  for (const { _id, count } of facets.byStatus) if (_id in byStatus) byStatus[_id] = count;
-  const total = Object.values(byStatus).reduce((sum, n) => sum + n, 0);
+  // Only resting statuses are reported (RESTING_STATUS_VALUES), in enum order, with 0 where there are none; the client
+  // never keeps its own list. total counts every ticket in scope, so it holds even if a transient status were stored.
+  const counts = new Map(facets.byStatus.map(({ _id, count }) => [_id, count]));
+  const byStatus = Object.fromEntries(RESTING_STATUS_VALUES.map((status) => [status, counts.get(status) ?? 0]));
+  const total = facets.byStatus.reduce((sum, { count }) => sum + count, 0);
   return { byStatus, overdue: facets.overdue[0]?.count ?? 0, total };
 };
 
