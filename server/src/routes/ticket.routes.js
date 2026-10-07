@@ -12,6 +12,7 @@ router.use(authenticate());
 router.post("/", ticketController.createTicket);
 router.get("/", ticketController.listTickets);
 router.get("/:id", ticketController.getTicket);
+router.get("/:id/assignable-users", ticketController.listAssignableUsers);
 router.post("/:id/transition", ticketController.transitionTicket);
 // Coarse gate only; IT_MANAGER's same-department restriction is applied in the service (D3.1).
 router.post("/:id/priority-override", authorize(ROLES.SYSTEM_ADMIN, ROLES.IT_MANAGER), ticketController.setPriorityOverride);

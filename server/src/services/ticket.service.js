@@ -241,6 +241,28 @@ const presentTicket = async (actor, ticket) => {
 
 const ASSIGNABLE_ROLES = [ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
 
+// Who the actor may pick as assignee for this ticket: the same rule transitionTicket enforces on assigneeId (role in
+// ASSIGNABLE_ROLES, same department as the ticket, active), so the client never re-implements it. Ticket lookup and
+// scope check match getTicket (404 / 403). Only a manager of the ticket (SYSTEM_ADMIN, or IT_MANAGER in its
+// department) picks someone else; canTransition(..., ASSIGNED) covers both "is a manager of it" and "ticket is
+// assignable right now". A technician's self-claim needs no list, so they get 403 here.
+export const listAssignableUsers = async (actor, id) => {
+  const ticket = await Ticket.findById(id);
+  if (!ticket) throw ApiError.notFound("Ticket not found");
+  if (!isInTicketScope(actor, ticket)) throw ApiError.forbidden("You do not have permission to view this ticket");
+
+  const isManagerRole = actor.role === ROLES.SYSTEM_ADMIN || actor.role === ROLES.IT_MANAGER;
+  if (!isManagerRole || !canTransition(ticket, actor, TICKET_STATUS.ASSIGNED)) {
+    throw ApiError.forbidden("You cannot assign this ticket");
+  }
+
+  const users = await User.find({ role: { $in: ASSIGNABLE_ROLES }, department: ticket.department, isActive: true })
+    .select("firstName lastName role")
+    .sort({ firstName: 1, lastName: 1 })
+    .lean();
+  return users.map((u) => ({ _id: u._id, name: `${u.firstName} ${u.lastName}`, role: u.role }));
+};
+
 // id format and toStatus presence are validated by the controller; toStatus's enum membership is checked here.
 // `reason` is accepted (matches the agreed signature) but unused: no transition in D6.3 records one.
 export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason } = {}) => {
@@ -261,7 +283,7 @@ export const transitionTicket = async (actor, id, toStatus, { assigneeId, reason
   if (isManagerAssigningSomeoneElse) {
     if (!isObjectIdString(assigneeId)) throw fieldError("assigneeId", "assigneeId must be a valid id");
     const target = await User.findById(assigneeId);
-    if (!target) throw fieldError("assigneeId", "assigneeId does not exist");
+    if (!target || !target.isActive) throw fieldError("assigneeId", "assigneeId does not exist");
     if (!ASSIGNABLE_ROLES.includes(target.role)) {
       throw fieldError("assigneeId", "assignee must be a TECHNICIAN or ASSET_MANAGER");
     }

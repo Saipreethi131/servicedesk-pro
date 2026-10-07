@@ -78,6 +78,12 @@ export const getTicket = async (req, res) => {
   sendSuccess(res, { message: "Ticket retrieved", data: { ticket } });
 };
 
+export const listAssignableUsers = async (req, res) => {
+  const id = requireIdParam(req.params.id);
+  const items = await ticketService.listAssignableUsers(req.user, id);
+  sendSuccess(res, { message: "Assignable users retrieved", data: { items } });
+};
+
 // toStatus is a validated body field, never part of the URL; enum membership is checked in the service.
 export const transitionTicket = async (req, res) => {
   const id = requireIdParam(req.params.id);

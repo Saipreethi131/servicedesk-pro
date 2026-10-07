@@ -47,7 +47,9 @@ const isOverdue = (t) =>
 export default function TicketDetail() {
   const { id } = useParams();
   const { user } = useAuth();
-  const isManagerRole = user.role === ROLES.IT_MANAGER; // SYSTEM_ADMIN never gets ASSIGNED in availableTransitions - see the report
+  // UX only (D4.3): these roles pick someone else from a list; everyone else with ASSIGNED just claims. The server
+  // decides who is actually eligible (assignable-users) and re-checks on transition.
+  const isManagerRole = user.role === ROLES.IT_MANAGER || user.role === ROLES.SYSTEM_ADMIN;
 
   const [ticket, setTicket] = useState(null); // null = still loading
   const [loadError, setLoadError] = useState(null);
@@ -61,8 +63,10 @@ export default function TicketDetail() {
   const [transitionError, setTransitionError] = useState(null);
   const [transitionNotice, setTransitionNotice] = useState(null);
   const [transitioningTo, setTransitioningTo] = useState(null);
-  const [assigningMode, setAssigningMode] = useState(false); // IT_MANAGER only: reveals the assignee-id input
-  const [assigneeIdInput, setAssigneeIdInput] = useState("");
+  const [assigningMode, setAssigningMode] = useState(false); // managers only: reveals the assignee picker
+  const [assigneeIdInput, setAssigneeIdInput] = useState(""); // selected assignee _id; "" = nothing chosen yet
+  const [assignable, setAssignable] = useState(null); // null = not loaded; otherwise [{ _id, name, role }] from the server
+  const [assignableError, setAssignableError] = useState(null);
 
   const [overrideValue, setOverrideValue] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
@@ -106,6 +110,21 @@ export default function TicketDetail() {
       ignore = true;
     };
   }, []);
+
+  // Only fetched when this user would see the picker AND the server lists ASSIGNED as an available action.
+  const showAssignPicker = isManagerRole && Boolean(ticket?.availableTransitions.includes("ASSIGNED"));
+  useEffect(() => {
+    setAssignable(null);
+    setAssignableError(null);
+    if (!showAssignPicker) return undefined;
+    let ignore = false;
+    request(`/tickets/${id}/assignable-users`)
+      .then(({ data }) => !ignore && setAssignable(data.items))
+      .catch((err) => !ignore && setAssignableError(err));
+    return () => {
+      ignore = true;
+    };
+  }, [id, showAssignPicker]);
 
   // Used after a successful transition/override (never inside the mount effect above, which already guards
   // against a stale response with `ignore`; these run once, sequentially, from a click handler instead).
@@ -332,24 +351,43 @@ export default function TicketDetail() {
                     </Button>
                   );
                 }
-                // IT_MANAGER: there's no user-picker component anywhere in the app (NewTicket.jsx flagged the
-                // same gap for its "file on behalf of" field) - this is a plain id input, not a search widget.
+                // Managers pick from the server's list of eligible users (assignable-users); the transition
+                // request is unchanged and the server still validates the chosen id.
                 return assigningMode ? (
                   <form
                     key={status}
                     onSubmit={(e) => {
                       e.preventDefault();
-                      submitTransition("ASSIGNED", assigneeIdInput.trim() ? { assigneeId: assigneeIdInput.trim() } : {});
+                      if (assigneeIdInput) submitTransition("ASSIGNED", { assigneeId: assigneeIdInput });
                     }}
                     className="flex flex-wrap items-center gap-2"
                   >
-                    <input
-                      value={assigneeIdInput}
-                      onChange={(e) => setAssigneeIdInput(e.target.value)}
-                      placeholder="Assignee user id (blank = assign yourself)"
-                      className={inputClass}
-                    />
-                    <Button type="submit" variant="primary" disabled={transitioningTo === "ASSIGNED"}>
+                    {assignableError ? (
+                      <ErrorBanner error={assignableError} />
+                    ) : assignable === null ? (
+                      <span className="text-sm" style={muted}>
+                        Loading assignees...
+                      </span>
+                    ) : assignable.length === 0 ? (
+                      <span className="text-sm" style={muted}>
+                        No eligible assignees in this department
+                      </span>
+                    ) : (
+                      <select
+                        aria-label="Assignee"
+                        value={assigneeIdInput}
+                        onChange={(e) => setAssigneeIdInput(e.target.value)}
+                        className={inputClass}
+                      >
+                        <option value="">Select an assignee...</option>
+                        {assignable.map((u) => (
+                          <option key={u._id} value={u._id}>
+                            {u.name} ({u.role})
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <Button type="submit" variant="primary" disabled={transitioningTo === "ASSIGNED" || !assigneeIdInput}>
                       {transitioningTo === "ASSIGNED" ? "Assigning..." : "Confirm"}
                     </Button>
                     <Button
