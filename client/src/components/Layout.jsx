@@ -1,58 +1,45 @@
-import { useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router";
+import { lazy, Suspense, useState } from "react";
+import { Outlet, useLocation, useNavigate } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
+import useShortcuts from "../lib/shortcuts.js";
+import useSidebarCollapsed from "../lib/useSidebarCollapsed.js";
+import { cn } from "../lib/cn.js";
 import ErrorBanner from "./ErrorBanner.jsx";
-import Badge from "./ui/Badge.jsx";
-import Button from "./ui/Button.jsx";
-import { ROLES } from "../roles.js";
+import ShortcutsDialog from "./ShortcutsDialog.jsx";
+import Sidebar from "./Sidebar.jsx";
+import Topbar from "./Topbar.jsx";
+import MobileNav from "./MobileNav.jsx";
+import { Button, Spinner } from "./ui/index.js";
 
-const DashboardIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-    <rect x="3" y="3" width="7" height="9" rx="1" />
-    <rect x="14" y="3" width="7" height="5" rx="1" />
-    <rect x="14" y="12" width="7" height="9" rx="1" />
-    <rect x="3" y="16" width="7" height="5" rx="1" />
-  </svg>
-);
-const PasswordIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-    <circle cx="8" cy="15" r="4" />
-    <path d="M11 12l9-9M15 7l2 2M18 4l2 2" />
-  </svg>
-);
-const UsersIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-    <circle cx="9" cy="8" r="3" />
-    <path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" />
-    <circle cx="17" cy="8" r="2.5" />
-    <path d="M15.5 14.2c2.6.5 4.5 2.8 4.5 5.8" />
-  </svg>
-);
-const TicketsIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-    <path d="M3 8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v2a2 2 0 0 0 0 4v2a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-2a2 2 0 0 0 0-4V8z" />
-    <path d="M10 6v12" strokeDasharray="2 2" />
-  </svg>
-);
-const DepartmentsIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-    <path d="M4 21V9l8-5 8 5v12" />
-    <path d="M9 21v-6h6v6" />
-  </svg>
-);
-const CategoriesIcon = () => (
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-    <rect x="3" y="4" width="7" height="7" rx="1" />
-    <path d="M6.5 11v4a2 2 0 0 0 2 2H13" />
-    <rect x="13" y="13" width="7" height="7" rx="1" />
-  </svg>
-);
+// cmdk and the palette are only needed once someone opens it, so they load on first use rather than with the app.
+const CommandPalette = lazy(() => import("./CommandPalette.jsx"));
 
 export default function Layout() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [loggingOut, setLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState(null);
+  const { pathname } = useLocation();
+  const [collapsed, toggleCollapsed] = useSidebarCollapsed();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteEverOpened, setPaletteEverOpened] = useState(false); // mount the lazy chunk on first open, keep it after
+  const [menuOpen, setMenuOpen] = useState(false); // the mobile nav drawer
+  const [helpOpen, setHelpOpen] = useState(false);
+
+  // Hooks cannot sit after the early return below, so the forced-password state is checked inside the handlers instead.
+  const active = !user.mustChangePassword;
+  useShortcuts({
+    palette: () => active && openPalette(),
+    help: () => active && setHelpOpen(true),
+    goDashboard: () => active && navigate("/"),
+    goTickets: () => active && navigate("/tickets"),
+    createTicket: () => active && navigate("/tickets/new"), // open to every role, like the route
+  });
+
+  const openPalette = () => {
+    setPaletteEverOpened(true);
+    setPaletteOpen(true);
+  };
 
   const handleLogout = async () => {
     setLogoutError(null);
@@ -77,12 +64,10 @@ export default function Layout() {
   // trapped on this page.
   if (user.mustChangePassword) {
     return (
-      <div className="auth-shell">
-        <div className="auth-card space-y-4">
+      <div className="grid min-h-screen place-items-center bg-canvas p-6">
+        <div className="w-full max-w-sm space-y-4">
           <div className="flex items-center justify-between">
-            <span className="text-sm font-semibold" style={{ color: "var(--color-text)" }}>
-              ServiceDesk Pro
-            </span>
+            <span className="text-sm font-semibold text-fg">ServiceDesk Pro</span>
             {logoutButton}
           </div>
           {logoutError && <ErrorBanner error={logoutError} focusOnShow />}
@@ -92,70 +77,43 @@ export default function Layout() {
     );
   }
 
-  const navLinkClass = ({ isActive }) => `sidebar-link${isActive ? " active" : ""}`;
-  // Same rules as before (and as the API): just which links render, not how access is enforced.
-  const showUsers = user.role === ROLES.SYSTEM_ADMIN || user.role === ROLES.IT_MANAGER;
-  const showDepartments = user.role === ROLES.SYSTEM_ADMIN;
-  const showCategories = user.role === ROLES.SYSTEM_ADMIN;
-  const showAdminGroup = showUsers || showDepartments || showCategories;
-
   return (
-    <div className="app-shell">
-      <aside className="sidebar">
-        <div className="sidebar-brand">
-          <span className="sidebar-brand-text">ServiceDesk Pro</span>
-        </div>
+    <div className="min-h-screen">
+      <Sidebar role={user.role} collapsed={collapsed} onToggle={toggleCollapsed} />
 
-        <nav className="sidebar-nav">
-          <NavLink to="/" end className={navLinkClass}>
-            <DashboardIcon />
-            <span className="sidebar-link-text">Dashboard</span>
-          </NavLink>
-          <NavLink to="/tickets" className={navLinkClass}>
-            <TicketsIcon />
-            <span className="sidebar-link-text">Tickets</span>
-          </NavLink>
-          <NavLink to="/change-password" className={navLinkClass}>
-            <PasswordIcon />
-            <span className="sidebar-link-text">Change password</span>
-          </NavLink>
+      <MobileNav open={menuOpen} onOpenChange={setMenuOpen} role={user.role} />
 
-          {showAdminGroup && <div className="sidebar-group-label">Admin</div>}
-          {showUsers && (
-            <NavLink to="/users" className={navLinkClass}>
-              <UsersIcon />
-              <span className="sidebar-link-text">Users</span>
-            </NavLink>
-          )}
-          {showDepartments && (
-            <NavLink to="/departments" className={navLinkClass}>
-              <DepartmentsIcon />
-              <span className="sidebar-link-text">Departments</span>
-            </NavLink>
-          )}
-          {showCategories && (
-            <NavLink to="/categories" className={navLinkClass}>
-              <CategoriesIcon />
-              <span className="sidebar-link-text">Categories</span>
-            </NavLink>
-          )}
-        </nav>
-
-        <div className="sidebar-footer">
-          <div className="sidebar-user">
-            <div className="sidebar-user-name">{user.fullName}</div>
-            <Badge variant="role" value={user.role} />
-          </div>
-          {logoutButton}
-        </div>
-      </aside>
-
-      <div className="app-content">
-        <div className="app-content-inner space-y-4">
+      <div className={cn("transition-[margin] duration-200 ease-out-expo", collapsed ? "md:ml-14" : "md:ml-56")}>
+        <Topbar
+          user={user}
+          onOpenMenu={() => setMenuOpen(true)}
+          onOpenPalette={openPalette}
+          onLogout={handleLogout}
+          loggingOut={loggingOut}
+        />
+        <main className="mx-auto max-w-6xl space-y-4 px-4 pt-6 pb-8 md:px-6">
           {logoutError && <ErrorBanner error={logoutError} focusOnShow />}
-          <Outlet />
-        </div>
+          {/* Keyed by path: a route change remounts this wrapper, which replays the 150ms fade (skipped under reduced motion). */}
+          <div key={pathname} className="animate-page-in">
+            <Suspense
+              fallback={
+                <div className="grid place-items-center py-24 text-muted">
+                  <Spinner size={20} label="Loading page" />
+                </div>
+              }
+            >
+              <Outlet />
+            </Suspense>
+          </div>
+        </main>
       </div>
+
+      {paletteEverOpened && (
+        <Suspense fallback={null}>
+          <CommandPalette open={paletteOpen} onOpenChange={setPaletteOpen} role={user.role} onLogout={handleLogout} />
+        </Suspense>
+      )}
+      <ShortcutsDialog open={helpOpen} onOpenChange={setHelpOpen} />
     </div>
   );
 }

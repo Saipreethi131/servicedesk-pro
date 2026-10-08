@@ -3,8 +3,7 @@ import { useNavigate } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
 import useDocumentTitle from "../useDocumentTitle.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
-import Card from "../components/ui/Card.jsx";
-import Button from "../components/ui/Button.jsx";
+import { Button, Card, Input } from "../components/ui/index.js";
 
 const MIN_LENGTH = 8; // characters, as on the server
 const MAX_BYTES = 72; // bcrypt ignores everything past 72 bytes, so the server refuses longer passwords
@@ -45,39 +44,30 @@ export default function ChangePassword() {
     }
   };
 
-  const field = (label, value, setValue, autoComplete) => (
-    <label className="block text-sm">
-      <span>{label}</span>
-      <input
-        type="password"
-        required
-        autoComplete={autoComplete}
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2"
-      />
-    </label>
-  );
-
   return (
-    <Card as="form" onSubmit={handleSubmit} className="max-w-sm space-y-4">
-      <h1 className="auth-card-title">Change password</h1>
+    <Card as="form" onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+      <h1 className="text-lg font-semibold tracking-tight text-fg">Change password</h1>
 
       {user.mustChangePassword && (
-        <p
-          className="rounded-md border px-3 py-2 text-sm"
-          style={{ borderColor: "#fde68a", backgroundColor: "#fffbeb", color: "#92400e" }}
-        >
+        <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning-ink">
           Your password was set by an administrator. Choose a new one to continue.
         </p>
       )}
 
       <ErrorBanner error={error} focusOnShow />
-      {field("Current password", current, setCurrent, "current-password")}
-      {field("New password", next, setNext, "new-password")}
-      {field("Confirm new password", confirm, setConfirm, "new-password")}
+      <Input label="Current password" type="password" required autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} />
+      <Input
+        label="New password"
+        type="password"
+        required
+        autoComplete="new-password"
+        hint={`At least ${MIN_LENGTH} characters`}
+        value={next}
+        onChange={(e) => setNext(e.target.value)}
+      />
+      <Input label="Confirm new password" type="password" required autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
 
-      <Button type="submit" variant="primary" disabled={submitting} className="w-full">
+      <Button type="submit" variant="primary" loading={submitting} className="w-full">
         {submitting ? "Saving..." : "Change password"}
       </Button>
     </Card>

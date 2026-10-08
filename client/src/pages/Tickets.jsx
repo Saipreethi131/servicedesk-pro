@@ -1,55 +1,56 @@
 import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useSearchParams } from "react-router";
+import { AlertCircle, AlignJustify, Inbox, Plus, SearchX, StretchHorizontal } from "lucide-react";
 import { request } from "../api.js";
 import useDocumentTitle from "../useDocumentTitle.js";
+import { useNow } from "../lib/dashboardHooks.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
-import PageHeader from "../components/ui/PageHeader.jsx";
-import Card from "../components/ui/Card.jsx";
-import Badge from "../components/ui/Badge.jsx";
-import Button from "../components/ui/Button.jsx";
+import Pagination from "../components/Pagination.jsx";
+import FilterBar from "../components/tickets/FilterBar.jsx";
+import TicketPeek from "../components/tickets/TicketPeek.jsx";
+import TicketsTable from "../components/tickets/TicketsTable.jsx";
+import { Button, buttonVariants, Card, EmptyState, IconButton, PageHeader } from "../components/ui/index.js";
 
 const PAGE_SIZE = 20;
+const DENSITY_KEY = "tickets-density";
 
-const formatDate = (iso) =>
-  new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-
-const selectClass = "mt-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-sm";
-
-// Clicks on these inside a row keep their own behaviour instead of opening the ticket.
-const INTERACTIVE = "a, button, input, select, textarea, label";
+const readDensity = () => {
+  try {
+    return localStorage.getItem(DENSITY_KEY) === "compact" ? "compact" : "comfortable";
+  } catch {
+    return "comfortable"; // storage blocked: the choice just lasts for this page
+  }
+};
 
 export default function Tickets() {
   useDocumentTitle("Tickets");
-  const navigate = useNavigate();
-  // Row click = open the ticket. The ticket-number <Link> remains the accessible, keyboard and middle-click path
-  // (the row itself is deliberately not focusable, so there is one tab stop per ticket, not two).
-  const handleRowClick = (event, ticketId) => {
-    const row = event.currentTarget;
-    const hit = event.target.closest(INTERACTIVE);
-    if (hit && row.contains(hit)) return; // a link, button or form control handles its own click
-    if (window.getSelection()?.toString()) return; // the user is selecting text, not opening
-    if (event.ctrlKey || event.metaKey) {
-      // Read the href off the row's own <Link>, so the new tab gets exactly the URL the link would.
-      window.open(row.querySelector("a[href]").href, "_blank", "noopener");
-      return;
-    }
-    navigate(`/tickets/${ticketId}`);
-  };
+  const now = useNow(30_000);
 
-  const [page, setPage] = useState(1); // the page last REQUESTED; the page on screen is result.page (see Users.jsx)
+  // The URL is the single source of truth for the filters, so a link such as /tickets?status=NEW lands on that view (the
+  // dashboard tiles rely on it). The values go to the server as given: an invalid one gets the server's 400, shown below.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFilter = searchParams.get("status") ?? "";
+  const priorityFilter = searchParams.get("priority") ?? "";
+  const filterKey = `${statusFilter}|${priorityFilter}`;
+
+  // The page is remembered together with the filter set it belongs to; when the filters change, it is page 1 again.
+  // (No effect needed, and it also covers the filters changing through a link, not only through this page's own controls.)
+  const [pageState, setPageState] = useState({ key: filterKey, page: 1 }); // the page last REQUESTED
+  const page = pageState.key === filterKey ? pageState.page : 1;
+
   const [reloadKey, setReloadKey] = useState(0);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("");
-  const [result, setResult] = useState(null); // { items, page, limit, total }
+  const [result, setResult] = useState(null); // { items, page, limit, total }; the page on screen is result.page
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [reference, setReference] = useState(null); // { ..., priorities, ticketStatuses }, open to every role (D5.3)
+  const [peekId, setPeekId] = useState(null); // local state only: the peek drawer never changes the URL
+  const [density, setDensity] = useState(readDensity);
 
   useEffect(() => {
     let ignore = false;
     request("/reference")
       .then(({ data }) => !ignore && setReference(data))
-      .catch(() => {}); // the filters just have no options beyond "All" until this loads
+      .catch(() => {}); // the pickers just have no options beyond "All" until this loads
     return () => {
       ignore = true;
     };
@@ -74,188 +75,126 @@ export default function Tickets() {
     };
   }, [page, statusFilter, priorityFilter, reloadKey]);
 
-  // Always refetches, even for the page already requested (mirrors Users.jsx: after a failed fetch, `page` already
-  // holds the failed page, so setting it again would otherwise do nothing).
+  // Always refetches, even for the page already requested (after a failed fetch `page` already holds the failed page, so
+  // setting it again would otherwise do nothing). Also what "Try again" uses.
   const goToPage = (n) => {
-    setPage(n);
+    setPageState({ key: filterKey, page: n });
     setReloadKey((k) => k + 1);
   };
 
-  // Changing a filter resets to page 1; both state updates are batched into the one re-render that refetches.
-  const handleStatusChange = (value) => {
-    setStatusFilter(value);
-    setPage(1);
+  // Filter changes replace the history entry (they are view state, not navigation). Unrelated params are kept.
+  const setFilter = (name, value) => {
+    const next = new URLSearchParams(searchParams);
+    if (value) next.set(name, value);
+    else next.delete(name);
+    setSearchParams(next, { replace: true });
   };
-  const handlePriorityChange = (value) => {
-    setPriorityFilter(value);
-    setPage(1);
+  const clearFilters = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("status");
+    next.delete("priority");
+    setSearchParams(next, { replace: true });
   };
 
-  const totalPages = result ? Math.max(1, Math.ceil(result.total / result.limit)) : 1;
-  const showRows = result !== null;
-  const showLoadingText = result === null && loading;
-
-  const loadErrorBanner = loadError && {
-    message: result
-      ? `Could not load page ${loadError.page}: ${loadError.err.message} (still showing page ${result.page})`
-      : `Could not load tickets: ${loadError.err.message}`,
+  const changeDensity = (value) => {
+    setDensity(value);
+    try {
+      localStorage.setItem(DENSITY_KEY, value);
+    } catch {
+      // not saved; still applied
+    }
   };
+
+  const anyFilter = statusFilter !== "" || priorityFilter !== "";
+  const peeked = result?.items.find((t) => t._id === peekId) ?? null;
+
+  const loadErrorBanner = loadError && result && {
+    message: `Could not load page ${loadError.page}: ${loadError.err.message} (still showing page ${result.page})`,
+  };
+
+  const densityToggle = (
+    <div className="inline-flex gap-0.5" role="group" aria-label="Row density">
+      <IconButton
+        label="Comfortable rows"
+        icon={StretchHorizontal}
+        size="sm"
+        variant={density === "comfortable" ? "secondary" : "ghost"}
+        aria-pressed={density === "comfortable"}
+        onClick={() => changeDensity("comfortable")}
+      />
+      <IconButton
+        label="Compact rows"
+        icon={AlignJustify}
+        size="sm"
+        variant={density === "compact" ? "secondary" : "ghost"}
+        aria-pressed={density === "compact"}
+        onClick={() => changeDensity("compact")}
+      />
+    </div>
+  );
+
+  // What the body shows: a full-card state (first load failed, or nothing to list) or the table.
+  const failedFirstLoad = loadError && !result;
+  const empty = result && result.items.length === 0;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader
         title="Tickets"
         action={
-          <Link to="/tickets/new" className="btn btn-primary">
-            + New Ticket
+          <Link to="/tickets/new" className={buttonVariants({ variant: "primary" })}>
+            <Plus size={16} aria-hidden="true" />
+            New Ticket
           </Link>
         }
       />
 
-      <Card>
-        <div className="flex flex-wrap items-end gap-4">
-          <label className="block text-sm">
-            <span>Status</span>
-            <br />
-            <select value={statusFilter} onChange={(e) => handleStatusChange(e.target.value)} className={selectClass}>
-              <option value="">All</option>
-              {(reference?.ticketStatuses ?? []).map((s) => (
-                <option key={s} value={s}>
-                  {s.replaceAll("_", " ")}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span>Priority</span>
-            <br />
-            <select value={priorityFilter} onChange={(e) => handlePriorityChange(e.target.value)} className={selectClass}>
-              <option value="">All</option>
-              {(reference?.priorities ?? []).map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-      </Card>
+      <FilterBar
+        reference={reference}
+        status={statusFilter}
+        priority={priorityFilter}
+        onChange={setFilter}
+        onClear={clearFilters}
+        trailing={densityToggle}
+      />
 
       <ErrorBanner error={loadErrorBanner} />
 
       <Card className="!p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className={`table ${loading ? "opacity-60" : ""}`}>
-            <caption className="sr-only">Tickets</caption>
-            <thead>
-              <tr>
-                <th scope="col">Ticket</th>
-                <th scope="col">Title</th>
-                <th scope="col">Status</th>
-                <th scope="col">Priority</th>
-                <th scope="col">Requester</th>
-                <th scope="col">Department</th>
-                <th scope="col">Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {showRows &&
-                result.items.map((t) => {
-                  const effectivePriority = t.priorityOverride?.value ?? t.priority;
-                  const hasOverride = Boolean(t.priorityOverride);
-                  return (
-                    <tr key={t._id} className="row-link" onClick={(e) => handleRowClick(e, t._id)}>
-                      <td>
-                        <Link to={`/tickets/${t._id}`} style={{ color: "var(--color-primary)" }}>
-                          TKT-{t.ticketNumber}
-                        </Link>
-                      </td>
-                      <td>{t.title}</td>
-                      <td>
-                        <Badge variant="status" value={t.status} />
-                      </td>
-                      <td>
-                        <span className="inline-flex items-center gap-1.5">
-                          <Badge variant="priority" value={effectivePriority} />
-                          {hasOverride && (
-                            <span
-                              className="text-xs"
-                              style={{ color: "var(--color-text-muted)" }}
-                              title="A manager overrode the derived priority"
-                            >
-                              (overridden)
-                            </span>
-                          )}
-                          {t.isOverdue && (
-                            <span
-                              className="text-xs font-medium"
-                              style={{ color: "var(--color-danger)" }}
-                              title={`Resolution deadline was ${formatDate(t.resolutionDeadline)}`}
-                            >
-                              ● Overdue
-                            </span>
-                          )}
-                        </span>
-                      </td>
-                      <td>
-                        {/* Defensive fallback only: the server always populates this now, but a bare string would
-                            mean something regressed, not that the ticket has no requester (that field is required). */}
-                        {t.requester && typeof t.requester === "object" ? (
-                          `${t.requester.firstName} ${t.requester.lastName}`
-                        ) : (
-                          <span title="Requester names aren't available - showing the raw id">{t.requester}</span>
-                        )}
-                      </td>
-                      <td>{t.department?.name ?? "-"}</td>
-                      <td>{formatDate(t.createdAt)}</td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-
-        {showRows && result.items.length === 0 && (
-          <p className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>
-            No tickets match these filters.
-          </p>
-        )}
-        {showLoadingText && (
-          <p role="status" className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Loading...
-          </p>
+        {failedFirstLoad ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="Could not load tickets"
+            description={loadError.err.message}
+            action={
+              <Button type="button" variant="secondary" onClick={() => goToPage(page)}>
+                Try again
+              </Button>
+            }
+          />
+        ) : empty ? (
+          anyFilter ? (
+            <EmptyState
+              icon={SearchX}
+              title="No tickets match these filters"
+              description="Try removing a filter to see more."
+              action={
+                <Button type="button" variant="secondary" onClick={clearFilters}>
+                  Clear filters
+                </Button>
+              }
+            />
+          ) : (
+            <EmptyState icon={Inbox} title="No tickets yet" description="Tickets you can see will show up here." />
+          )
+        ) : (
+          <TicketsTable items={result ? result.items : null} loading={loading} now={now} density={density} onPeek={(t) => setPeekId(t._id)} />
         )}
 
-        {result && (
-          <nav
-            aria-label="Pagination"
-            className="flex items-center justify-between border-t px-4 py-3 text-sm"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            <span style={{ color: "var(--color-text-muted)" }}>
-              Page {result.page} of {totalPages} &middot; {result.total} {result.total === 1 ? "ticket" : "tickets"}
-            </span>
-            <div className="flex gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => goToPage(result.page - 1)}
-                disabled={result.page <= 1 || loading}
-              >
-                Previous
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => goToPage(result.page + 1)}
-                disabled={result.page >= totalPages || loading}
-              >
-                Next
-              </Button>
-            </div>
-          </nav>
-        )}
+        {result && <Pagination result={result} loading={loading} noun="ticket" onPage={goToPage} />}
       </Card>
+
+      <TicketPeek ticket={peeked} now={now} onClose={() => setPeekId(null)} />
     </div>
   );
 }

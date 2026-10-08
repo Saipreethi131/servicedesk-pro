@@ -1,362 +1,278 @@
 @import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/jetbrains-mono";
 
-:root {
-  --color-primary: #4f46e5;
-  --color-primary-hover: #4338ca;
-  --color-bg: #f8fafc;
-  --color-surface: #ffffff;
-  --color-border: #e2e8f0;
-  --color-text: #0f172a;
-  --color-text-muted: #64748b;
+/* =====================================================================================================================
+   Design tokens. Documented in docs/UI_SYSTEM.md.
+   Raw tokens live on :root and on any [data-theme] element, so a subtree can force a theme (the dev kit shows both side by
+   side). With no data-theme on <html>, the OS preference decides. Tailwind utilities (the @theme block below) point at these
+   variables, so they switch with the theme and with a scoped theme.
+   ===================================================================================================================== */
 
-  --color-success: #059669;
-  --color-danger: #dc2626;
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+  --canvas: #fafafa;
+  --surface: #ffffff;
+  --subtle: #f4f4f5;
+  --border: #e4e4e7;
+  --text: #18181b;
+  --muted: #71717a; /* text on canvas or surface only (4.7-4.9:1). On a subtle background use --muted-strong. */
+  --muted-strong: #52525b;
+  --control: #8b8b94; /* the edge of an input, select or checkbox: 3:1 against the surface (WCAG non-text contrast) */
 
-  /* Not used by any page yet (tickets land in P6) - defined now so Badge is ready for them. */
-  --color-priority-critical: #dc2626;
-  --color-priority-high: #ea580c;
-  --color-priority-medium: #d97706;
-  --color-priority-low: #64748b;
+  --accent: #4f46e5;
+  --accent-hover: #4338ca;
+  --accent-ink: #4338ca; /* accent as TEXT on an accent-soft background */
+  --on-accent: #ffffff;
 
-  --color-status-new: #2563eb;
-  --color-status-assigned: #4f46e5;
-  --color-status-in_progress: #7c3aed;
-  --color-status-waiting_on_requester: #d97706;
-  --color-status-resolved: #059669;
-  --color-status-closed: #64748b;
-  --color-status-escalated: #dc2626;
-  --color-status-reopened: #ea580c;
+  --success: #16a34a;
+  --warning: #d97706;
+  --danger: #dc2626;
+  --info: #2563eb;
+  /* Semantic colours as TEXT: the base colours above are for icons and fills; on a soft background they fall below 4.5:1. */
+  --success-ink: #166534;
+  --warning-ink: #92400e;
+  --danger-ink: #b91c1c;
+  --info-ink: #1d4ed8;
 
-  --sidebar-width: 15rem;
-  --sidebar-width-collapsed: 4.5rem;
-
-  --shadow-sm: 0 1px 2px 0 rgb(15 23 42 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.06);
-  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.06);
-
-  --radius-sm: 0.5rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 0.875rem;
-
-  --transition-fast: 150ms ease;
-  --transition-base: 200ms ease;
+  --popover-shadow: 0 8px 24px -8px rgb(24 24 27 / 0.18), 0 2px 6px -2px rgb(24 24 27 / 0.08);
 }
 
-body {
-  background-color: var(--color-bg);
-  color: var(--color-text);
+[data-theme="dark"] {
+  color-scheme: dark;
+  --canvas: #09090b;
+  --surface: #111113;
+  --subtle: #18181b;
+  --border: #27272a;
+  --text: #fafafa;
+  --muted: #a1a1aa;
+  --muted-strong: #d4d4d8;
+  --control: #6b6b75;
+
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-ink: #a5b4fc;
+  --on-accent: #0b0b14;
+
+  --success-ink: #4ade80;
+  --warning-ink: #fbbf24;
+  --danger-ink: #f87171;
+  --info-ink: #60a5fa;
+
+  --popover-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.04);
 }
 
-/* ---- Button ---- */
+/* The same dark values, applied when the OS prefers dark and the user has not chosen light. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --canvas: #09090b;
+    --surface: #111113;
+    --subtle: #18181b;
+    --border: #27272a;
+    --text: #fafafa;
+    --muted: #a1a1aa;
+    --muted-strong: #d4d4d8;
+    --control: #6b6b75;
 
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  padding: 0.5rem 1rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.25rem;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background-color var(--transition-fast), border-color var(--transition-fast),
-    color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
-}
-.btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-.btn:active:not(:disabled) {
-  transform: translateY(1px);
-}
-.btn:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--color-primary) 35%, transparent);
-}
-.btn-primary {
-  background-color: var(--color-primary);
-  color: #ffffff;
-}
-.btn-primary:hover:not(:disabled) {
-  background-color: var(--color-primary-hover);
-  box-shadow: var(--shadow-md);
-  transform: translateY(-1px);
-}
-.btn-primary:active:not(:disabled) {
-  box-shadow: var(--shadow-sm);
-  transform: translateY(0);
-}
-.btn-secondary {
-  background-color: var(--color-surface);
-  border-color: var(--color-border);
-  color: var(--color-text);
-}
-.btn-secondary:hover:not(:disabled) {
-  background-color: var(--color-bg);
-}
-.btn-danger {
-  background-color: #ffffff;
-  border-color: #fca5a5;
-  color: var(--color-danger);
-}
-.btn-danger:hover:not(:disabled) {
-  background-color: #fef2f2;
-}
-.btn-ghost {
-  background-color: transparent;
-  color: var(--color-text-muted);
-}
-.btn-ghost:hover:not(:disabled) {
-  background-color: var(--color-border);
-  color: var(--color-text);
-}
+    --accent: #818cf8;
+    --accent-hover: #a5b4fc;
+    --accent-ink: #a5b4fc;
+    --on-accent: #0b0b14;
 
-/* ---- Card ---- */
+    --success-ink: #4ade80;
+    --warning-ink: #fbbf24;
+    --danger-ink: #f87171;
+    --info-ink: #60a5fa;
 
-.card {
-  background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  padding: 1.5rem;
-  box-shadow: var(--shadow-sm);
-  transition: box-shadow var(--transition-base), transform var(--transition-base);
-}
-.card-interactive {
-  cursor: pointer;
-}
-.card-interactive:hover {
-  box-shadow: var(--shadow-md);
-  transform: translateY(-2px);
-}
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 0.875rem;
-}
-.card-title {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--color-text);
-}
-
-/* ---- Badge ----
-   --badge-color is set inline per instance (components/ui/Badge.jsx); color-mix tints it for the fill/border
-   so one hex per value covers all three layers instead of three variables per value. */
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  padding: 0.125rem 0.625rem;
-  border-radius: 9999px;
-  font-size: 0.75rem;
-  font-weight: 500;
-  line-height: 1.25rem;
-  white-space: nowrap;
-  color: var(--badge-color, var(--color-text-muted));
-  background-color: color-mix(in srgb, var(--badge-color, var(--color-text-muted)) 14%, white);
-  border: 1px solid color-mix(in srgb, var(--badge-color, var(--color-text-muted)) 30%, white);
-  box-shadow: var(--shadow-sm);
-}
-
-/* ---- PageHeader ---- */
-
-.page-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 2rem;
-}
-.page-header-title {
-  font-size: 1.75rem;
-  font-weight: 700;
-  color: var(--color-text);
-}
-
-/* ---- Table: shared by every data table (Users today; Departments/Categories can opt in the same way) ---- */
-
-.table {
-  width: 100%;
-  text-align: left;
-  font-size: 0.875rem;
-}
-.table thead {
-  border-bottom: 1px solid var(--color-border);
-}
-.table th {
-  padding: 0.875rem 1rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-.table td {
-  padding: 0.875rem 1rem;
-}
-.table tbody tr {
-  border-bottom: 1px solid var(--color-border);
-  transition: background-color var(--transition-fast);
-}
-.table tbody tr:last-child {
-  border-bottom: none;
-}
-.table tbody tr:hover {
-  background-color: var(--color-bg);
-}
-/* A whole row that acts as a link (Tickets list); the real <a> inside stays the keyboard/middle-click target. */
-.table tbody tr.row-link {
-  cursor: pointer;
-}
-
-/* ---- Auth shell: Login, and ChangePassword when it stands alone during a forced change ---- */
-
-.auth-shell {
-  min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background-color: var(--color-bg);
-  padding: 1rem;
-}
-.auth-card {
-  width: 100%;
-  max-width: 24rem;
-}
-.auth-card-title {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: var(--color-text);
-  margin-bottom: 1rem;
-}
-
-/* ---- App shell: sidebar + content, used by Layout.jsx ---- */
-
-.app-shell {
-  min-height: 100vh;
-  display: flex;
-}
-.sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 100vh;
-  width: var(--sidebar-width);
-  flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
-  background-color: var(--color-surface);
-  border-right: 1px solid var(--color-border);
-}
-.sidebar-brand {
-  padding: 1.25rem;
-  font-size: 1.0625rem;
-  font-weight: 700;
-  color: var(--color-text);
-  border-bottom: 1px solid var(--color-border);
-  white-space: nowrap;
-  overflow: hidden;
-}
-.sidebar-nav {
-  flex: 1;
-  overflow-y: auto;
-  padding: 1rem 0.75rem;
-}
-.sidebar-group-label {
-  padding: 0.5rem 0.75rem 0.25rem;
-  font-size: 0.6875rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-.sidebar-link {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.5rem 0.75rem;
-  border-radius: var(--radius-sm);
-  font-size: 0.875rem;
-  color: var(--color-text-muted);
-  text-decoration: none;
-  white-space: nowrap;
-  box-shadow: inset 3px 0 0 0 transparent;
-  transition: background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
-}
-.sidebar-link svg {
-  width: 1.125rem;
-  height: 1.125rem;
-  flex-shrink: 0;
-}
-.sidebar-link:hover {
-  background-color: var(--color-bg);
-  color: var(--color-text);
-}
-.sidebar-link.active {
-  background-color: color-mix(in srgb, var(--color-primary) 10%, white);
-  color: var(--color-primary);
-  font-weight: 500;
-  box-shadow: inset 3px 0 0 0 var(--color-primary);
-}
-.sidebar-link:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-.sidebar-footer {
-  border-top: 1px solid var(--color-border);
-  padding: 0.875rem 1.25rem;
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-}
-.sidebar-user {
-  flex: 1;
-  min-width: 0;
-}
-.sidebar-user-name {
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--color-text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.app-content {
-  flex: 1;
-  min-width: 0;
-  margin-left: var(--sidebar-width);
-}
-.app-content-inner {
-  max-width: 72rem;
-  margin: 0 auto;
-  padding: 2rem 1.5rem;
-}
-
-@media (max-width: 768px) {
-  .sidebar {
-    width: var(--sidebar-width-collapsed);
+    --popover-shadow: 0 8px 24px -8px rgb(0 0 0 / 0.6), 0 0 0 1px rgb(255 255 255 / 0.04);
   }
-  .sidebar-brand-text,
-  .sidebar-link-text,
-  .sidebar-group-label,
-  .sidebar-user {
-    display: none;
+}
+
+/* Soft backgrounds are mixed from the element's own surface, so they are right in either theme. Declared on every themed
+   element (not only :root) because a custom property is resolved where it is declared. */
+:root,
+[data-theme] {
+  --accent-soft: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  --success-soft: color-mix(in srgb, var(--success) 14%, var(--surface));
+  --warning-soft: color-mix(in srgb, var(--warning) 16%, var(--surface));
+  --danger-soft: color-mix(in srgb, var(--danger) 12%, var(--surface));
+  --info-soft: color-mix(in srgb, var(--info) 12%, var(--surface));
+}
+
+/* ---- Tailwind theme: the tokens above as utilities (bg-surface, text-muted, border-border, ...) ---- */
+
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-surface: var(--surface);
+  --color-subtle: var(--subtle);
+  --color-border: var(--border);
+  --color-control: var(--control);
+  --color-fg: var(--text); /* the "text" token; named fg so the utility is text-fg, not text-text */
+  --color-muted: var(--muted);
+  --color-muted-strong: var(--muted-strong);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-ink: var(--accent-ink);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
+  --color-success-ink: var(--success-ink);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
+  --color-warning-ink: var(--warning-ink);
+  --color-danger: var(--danger);
+  --color-danger-soft: var(--danger-soft);
+  --color-danger-ink: var(--danger-ink);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-info-ink: var(--info-ink);
+
+  --shadow-popover: var(--popover-shadow);
+}
+
+@theme {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Type scale: 12 / 13 / 14 / 16 / 20 / 24 / 32. Body is 14. */
+  --text-*: initial;
+  --text-xs: 0.75rem;
+  --text-xs--line-height: 1rem;
+  --text-13: 0.8125rem;
+  --text-13--line-height: 1.25rem;
+  --text-sm: 0.875rem;
+  --text-sm--line-height: 1.25rem;
+  --text-base: 1rem;
+  --text-base--line-height: 1.5rem;
+  --text-lg: 1.25rem;
+  --text-lg--line-height: 1.75rem;
+  --text-xl: 1.5rem;
+  --text-xl--line-height: 2rem;
+  --text-2xl: 2rem;
+  --text-2xl--line-height: 2.5rem;
+
+  /* Spacing stays on Tailwind's 4px grid (--spacing: 0.25rem). Radius: 6 for controls, 8 for containers. */
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  /* Motion: 120-200ms, one easing. All of it is switched off for prefers-reduced-motion at the bottom of this file. */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+
+  --animate-fade-in: fade-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-fade-out: fade-out 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pop-in: pop-in 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-pop-out: pop-out 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in-right: slide-in-right 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-out-right: slide-out-right 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-in-left: slide-in-left 200ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-slide-out-left: slide-out-left 160ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-indeterminate: indeterminate 1.4s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  --animate-page-in: page-in 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-grid-drift: grid-drift 40s linear infinite;
+  --animate-glow-drift: glow-drift 18s ease-in-out infinite alternate;
+
+  @keyframes page-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: none; }
   }
-  .sidebar-brand {
-    text-align: center;
+  @keyframes grid-drift {
+    from { background-position: 0 0; }
+    to { background-position: 48px 48px; }
   }
-  .sidebar-link {
-    justify-content: center;
+  @keyframes glow-drift {
+    from { transform: translate(-6%, -4%) scale(1); }
+    to { transform: translate(6%, 5%) scale(1.12); }
   }
-  .sidebar-footer {
-    justify-content: center;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
   }
-  .app-content {
-    margin-left: var(--sidebar-width-collapsed);
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
+  }
+  @keyframes pop-in {
+    from { opacity: 0; transform: scale(0.97) translateY(2px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pop-out {
+    from { opacity: 1; transform: none; }
+    to { opacity: 0; transform: scale(0.97); }
+  }
+  @keyframes slide-in-right {
+    from { transform: translateX(16px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes slide-out-right {
+    from { transform: none; opacity: 1; }
+    to { transform: translateX(16px); opacity: 0; }
+  }
+  @keyframes slide-in-left {
+    from { transform: translateX(-16px); opacity: 0; }
+    to { transform: none; opacity: 1; }
+  }
+  @keyframes slide-out-left {
+    from { transform: none; opacity: 1; }
+    to { transform: translateX(-16px); opacity: 0; }
+  }
+  @keyframes indeterminate {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(250%); }
+  }
+}
+
+/* ---- Base ---- */
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    border-color: var(--border);
+  }
+
+  body {
+    background-color: var(--canvas);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+    font-variant-numeric: tabular-nums; /* every number lines up, everywhere */
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  code,
+  kbd,
+  samp,
+  pre {
+    font-family: var(--font-mono);
+  }
+
+  /* One focus ring for everything: 2px accent, 2px offset. Components add nothing of their own, so it cannot drift. */
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  }
+}
+
+/* ---- Reduced motion: nothing animates or transitions. Animations collapse to a single frame, so the end state shows. ---- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

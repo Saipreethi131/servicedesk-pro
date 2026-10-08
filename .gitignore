@@ -145,3 +145,4 @@ vite.config.ts.timestamp-*
 .vite/
 
 docs/DECISIONS.md
+docs/

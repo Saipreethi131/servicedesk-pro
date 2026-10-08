@@ -1,6 +1,7 @@
 import { Component } from "react";
-import Card from "./ui/Card.jsx";
-import Button from "./ui/Button.jsx";
+import { AlertCircle } from "lucide-react";
+import StatePage from "./StatePage.jsx";
+import { Button } from "./ui/index.js";
 
 // Catches errors thrown while React renders its children; without one, a render crash unmounts the whole app
 // and leaves a white page. It cannot catch errors in event handlers or async code (those are shown by each page's
@@ -20,17 +21,17 @@ export default class ErrorBoundary extends Component {
     if (!this.state.failed) return this.props.children;
 
     return (
-      <div className="auth-shell">
-        <Card role="alert" className="auth-card space-y-4 text-center">
-          <h1 className="auth-card-title">Something went wrong</h1>
-          <p className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-            An unexpected error occurred. Reloading the page usually fixes it.
-          </p>
+      <StatePage
+        role="alert"
+        icon={AlertCircle}
+        title="Something went wrong"
+        description="An unexpected error occurred. Reloading the page usually fixes it."
+        action={
           <Button type="button" variant="primary" onClick={() => window.location.reload()}>
             Reload
           </Button>
-        </Card>
-      </div>
+        }
+      />
     );
   }
 }

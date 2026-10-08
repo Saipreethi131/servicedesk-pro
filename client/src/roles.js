@@ -14,5 +14,3 @@ const MANAGEABLE_ROLES = Object.freeze({
 });
 
 export const manageableRoles = (actorRole) => MANAGEABLE_ROLES[actorRole] ?? [];
-
-export const roleLabel = (role) => role.replaceAll("_", " ");

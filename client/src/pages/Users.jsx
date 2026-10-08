@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import { AlertCircle, UsersRound } from "lucide-react";
 import { request } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
 import { manageableRoles } from "../roles.js";
+import { roleLabel } from "../lib/labels.js";
 import useDocumentTitle from "../useDocumentTitle.js";
 import CreateUserForm from "../components/CreateUserForm.jsx";
 import ErrorBanner from "../components/ErrorBanner.jsx";
-import Notice from "../components/Notice.jsx";
-import PageHeader from "../components/ui/PageHeader.jsx";
-import Card from "../components/ui/Card.jsx";
-import Badge from "../components/ui/Badge.jsx";
-import Button from "../components/ui/Button.jsx";
+import Pagination from "../components/Pagination.jsx";
+import { Avatar, Badge, Button, Card, EmptyState, PageHeader, Skeleton, toast } from "../components/ui/index.js";
 
 const PAGE_SIZE = 20;
 
@@ -25,7 +24,6 @@ export default function Users() {
   const [departmentsError, setDepartmentsError] = useState(null);
   const [loadError, setLoadError] = useState(null); // { page, err } of the last failed page fetch; cleared by the next success
   const [actionError, setActionError] = useState(null); // a failed activate/deactivate
-  const [notice, setNotice] = useState(null);
   const [busyId, setBusyId] = useState(null);
 
   // The users list carries department ids only, so names come from the departments list.
@@ -60,7 +58,7 @@ export default function Users() {
   // Department cells wait for the departments request (success or failure), so a name never flashes as "Unknown".
   const departmentsSettled = departments !== null || departmentsError !== null;
   const showRows = result !== null && departmentsSettled;
-  const showLoadingText = (result === null && loading) || (result !== null && !departmentsSettled);
+  const showSkeleton = !showRows && !loadError; // nothing to show yet: first load, or still waiting on the department names
 
   // /departments only returns ACTIVE departments, so a user in an inactive one has no name to show.
   const departmentLabel = (u) => {
@@ -79,12 +77,11 @@ export default function Users() {
   const toggleActive = async (target) => {
     setBusyId(target._id);
     setActionError(null);
-    setNotice(null);
     try {
       const { data } = await request(`/users/${target._id}`, { method: "PATCH", body: { isActive: !target.isActive } });
       // Show what the server stored, not what we assumed it would store.
       setResult((current) => ({ ...current, items: current.items.map((u) => (u._id === target._id ? data.user : u)) }));
-      setNotice(`${data.user.fullName} is now ${data.user.isActive ? "active" : "inactive"}`);
+      toast.success(`${data.user.fullName} is now ${data.user.isActive ? "active" : "inactive"}`);
     } catch (err) {
       setActionError(err); // 403 not permitted, 400 invalid state, 409 last SYSTEM_ADMIN...: the server's wording
     } finally {
@@ -94,7 +91,9 @@ export default function Users() {
 
   const handleCreated = (user) => {
     setActionError(null);
-    setNotice(`Created ${user.fullName} (${user.email}). They must change the temporary password at first sign-in.`);
+    toast.success(`Created ${user.fullName}`, {
+      description: `${user.email}. They must change the temporary password at first sign-in.`,
+    });
     goToPage(1); // newest first, so the new user is on page 1
   };
 
@@ -105,135 +104,156 @@ export default function Users() {
     setReloadKey((k) => k + 1);
   };
 
-  const totalPages = result ? Math.max(1, Math.ceil(result.total / result.limit)) : 1;
+  // Say which page a failed fetch was for and which one is still on screen. With nothing on screen the empty state says it.
+  const loadErrorBanner = loadError &&
+    result && {
+      message: `Could not load page ${loadError.page}: ${loadError.err.message} (still showing page ${result.page})`,
+    };
 
-  // Say which page a failed fetch was for and which one is still on screen.
-  const loadErrorBanner = loadError && {
-    message: result
-      ? `Could not load page ${loadError.page}: ${loadError.err.message} (still showing page ${result.page})`
-      : `Could not load users: ${loadError.err.message}`,
+  const statusBadge = (u) => <Badge tone={u.isActive ? "success" : "neutral"}>{u.isActive ? "Active" : "Inactive"}</Badge>;
+
+  // Shared by the table row and the mobile card. The visible reason sits next to the disabled button; aria-describedby ties
+  // it to the button for screen readers.
+  const actionCell = (u) => {
+    const blocked = toggleBlockedReason(u);
+    const action = u.isActive ? "Deactivate" : "Activate";
+    return (
+      <span className="inline-flex flex-wrap items-center justify-end gap-2">
+        {blocked && (
+          <span id={`blocked-${u._id}`} className="text-xs text-muted-strong">
+            {blocked}
+          </span>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant={u.isActive ? "danger" : "secondary"}
+          onClick={() => toggleActive(u)}
+          disabled={Boolean(blocked) || busyId === u._id}
+          aria-label={`${action} ${u.fullName}`}
+          aria-describedby={blocked ? `blocked-${u._id}` : undefined}
+        >
+          {action}
+        </Button>
+      </span>
+    );
   };
 
+  const th = "sticky top-0 z-10 border-b border-border bg-surface px-3 py-2 text-left text-xs font-medium text-muted";
+  const td = "border-b border-border px-3 py-2";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <PageHeader title="Users" />
 
-      <CreateUserForm
-        departments={departments ?? []}
-        onStart={() => {
-          setActionError(null);
-          setNotice(null);
-        }}
-        onCreated={handleCreated}
-      />
+      <CreateUserForm departments={departments ?? []} onStart={() => setActionError(null)} onCreated={handleCreated} />
 
       <ErrorBanner error={departmentsError} />
       <ErrorBanner error={loadErrorBanner} />
       <ErrorBanner error={actionError} focusOnShow />
-      <Notice message={notice} />
 
       <Card className="!p-0 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className={`table ${loading ? "opacity-60" : ""}`}>
-            <caption className="sr-only">Users</caption>
-            <thead>
-              <tr>
-                <th scope="col">Name</th>
-                <th scope="col">Email</th>
-                <th scope="col">Role</th>
-                <th scope="col">Department</th>
-                <th scope="col">Status</th>
-                <th scope="col">
-                  <span className="sr-only">Actions</span>
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {showRows &&
-                result.items.map((u) => {
-                  const blocked = toggleBlockedReason(u);
-                  const action = u.isActive ? "Deactivate" : "Activate";
-                  return (
-                    <tr key={u._id}>
-                      <td>{u.fullName}</td>
-                      <td>{u.email}</td>
-                      <td>
-                        <Badge variant="role" value={u.role} />
-                      </td>
-                      <td>{departmentLabel(u)}</td>
-                      <td>
-                        <Badge variant="active" value={u.isActive} />
-                      </td>
-                      <td className="text-right">
-                        {/* Visible reason next to the disabled button; aria-describedby ties it to the button for screen readers. */}
-                        {blocked && (
-                          <span
-                            id={`blocked-${u._id}`}
-                            className="mr-3 text-xs"
-                            style={{ color: "var(--color-text-muted)" }}
-                          >
-                            {blocked}
-                          </span>
-                        )}
-                        <Button
-                          type="button"
-                          variant={u.isActive ? "danger" : "secondary"}
-                          onClick={() => toggleActive(u)}
-                          disabled={Boolean(blocked) || busyId === u._id}
-                          aria-label={`${action} ${u.fullName}`}
-                          aria-describedby={blocked ? `blocked-${u._id}` : undefined}
-                        >
-                          {action}
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-            </tbody>
-          </table>
-        </div>
-
-        {showRows && result.items.length === 0 && (
-          <p className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>
-            No users on this page.
-          </p>
-        )}
-        {showLoadingText && (
-          <p role="status" className="p-4 text-sm" style={{ color: "var(--color-text-muted)" }}>
-            Loading...
-          </p>
-        )}
-
-        {result && (
-          <nav
-            aria-label="Pagination"
-            className="flex items-center justify-between border-t px-4 py-3 text-sm"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            <span style={{ color: "var(--color-text-muted)" }}>
-              Page {result.page} of {totalPages} &middot; {result.total} {result.total === 1 ? "user" : "users"}
-            </span>
-            <div className="flex gap-2">
-              {/* Both buttons work from result.page (what is on screen), not from `page` (what was last requested). */}
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => goToPage(result.page - 1)}
-                disabled={result.page <= 1 || loading}
-              >
-                Previous
+        {loadError && !result ? (
+          <EmptyState
+            icon={AlertCircle}
+            title="Could not load users"
+            description={loadError.err.message}
+            action={
+              <Button type="button" variant="secondary" onClick={() => goToPage(page)}>
+                Try again
               </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => goToPage(result.page + 1)}
-                disabled={result.page >= totalPages || loading}
-              >
-                Next
-              </Button>
+            }
+          />
+        ) : showRows && result.items.length === 0 ? (
+          <EmptyState icon={UsersRound} title="No users on this page" description="Create a user above to get started." />
+        ) : (
+          <>
+            {/* >= 768px: table. */}
+            <div className="hidden max-h-[calc(100vh-17rem)] min-h-40 overflow-auto md:block">
+              <table className={`w-full min-w-[760px] border-separate border-spacing-0 text-13 ${loading && showRows ? "opacity-60" : ""}`}>
+                <caption className="sr-only">Users</caption>
+                <thead>
+                  <tr>
+                    {["Name", "Email", "Role", "Department", "Status"].map((h) => (
+                      <th key={h} scope="col" className={th}>
+                        {h}
+                      </th>
+                    ))}
+                    <th scope="col" className={th}>
+                      <span className="sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {showRows
+                    ? result.items.map((u) => (
+                        <tr key={u._id} className="hover:bg-subtle">
+                          <td className={td}>
+                            <span className="flex items-center gap-2">
+                              <Avatar name={u.fullName} size={24} />
+                              <span className="font-medium text-fg">{u.fullName}</span>
+                            </span>
+                          </td>
+                          <td className={`${td} text-muted-strong`}>{u.email}</td>
+                          <td className={td}>
+                            <Badge>{roleLabel(u.role)}</Badge>
+                          </td>
+                          <td className={`${td} text-muted-strong`}>{departmentLabel(u)}</td>
+                          <td className={td}>{statusBadge(u)}</td>
+                          <td className={`${td} text-right`}>{actionCell(u)}</td>
+                        </tr>
+                      ))
+                    : showSkeleton &&
+                      Array.from({ length: 6 }, (_, i) => (
+                        <tr key={i}>
+                          {[0, 1, 2, 3, 4, 5].map((c) => (
+                            <td key={c} className={td}>
+                              <Skeleton className="h-4 w-24" />
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                </tbody>
+              </table>
             </div>
-          </nav>
+
+            {/* < 768px: one card per user. */}
+            <ul className="divide-y divide-border md:hidden">
+              {showRows
+                ? result.items.map((u) => (
+                    <li key={u._id} className={`space-y-2 p-3 ${loading ? "opacity-60" : ""}`}>
+                      <div className="flex items-center gap-2">
+                        <Avatar name={u.fullName} size={32} />
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium text-fg">{u.fullName}</p>
+                          <p className="truncate text-13 text-muted-strong">{u.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge>{roleLabel(u.role)}</Badge>
+                        {statusBadge(u)}
+                        <span className="text-13 text-muted-strong">{departmentLabel(u)}</span>
+                      </div>
+                      <div className="text-right">{actionCell(u)}</div>
+                    </li>
+                  ))
+                : showSkeleton &&
+                  Array.from({ length: 4 }, (_, i) => (
+                    <li key={i} className="space-y-2 p-3">
+                      <Skeleton className="h-8 w-2/3" />
+                      <Skeleton className="h-4 w-1/2" />
+                    </li>
+                  ))}
+            </ul>
+            {showSkeleton && (
+              <p role="status" className="sr-only">
+                Loading users
+              </p>
+            )}
+          </>
         )}
+
+        {result && <Pagination result={result} loading={loading} noun="user" onPage={goToPage} />}
       </Card>
     </div>
   );

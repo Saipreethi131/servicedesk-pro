@@ -1,54 +1,47 @@
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router";
+import { AlertCircle, ArrowLeft, ChevronDown, ChevronRight, FileQuestion, ShieldAlert } from "lucide-react";
 import { request } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
 import { ROLES } from "../roles.js";
 import useDocumentTitle from "../useDocumentTitle.js";
+import { useNow } from "../lib/dashboardHooks.js";
+import { statusLabel } from "../lib/labels.js";
+import { TRANSITION_LABELS } from "../lib/ticketText.js";
+import { cn } from "../lib/cn.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
-import Notice from "../components/Notice.jsx";
-import Card from "../components/ui/Card.jsx";
-import Badge from "../components/ui/Badge.jsx";
-import Button from "../components/ui/Button.jsx";
-
-const inputClass = "mt-1 rounded-md border border-[var(--color-border)] px-3 py-2 text-sm";
-const muted = { color: "var(--color-text-muted)" };
-
-// Plain-language labels for the statuses canTransition can actually produce in availableTransitions (D6.2/D6.3).
-// "NEW" never appears there - TRANSITION_TABLE never lists it as a target, only as a source - so the reopen case
-// is keyed by "REOPENED" (the value the API expects in the transition request), not "NEW".
-const TRANSITION_LABELS = {
-  IN_PROGRESS: "Start work",
-  WAITING_ON_REQUESTER: "Wait for requester",
-  RESOLVED: "Mark resolved",
-  CLOSED: "Close ticket",
-  ESCALATED: "Escalate",
-  REOPENED: "Reopen ticket",
-};
+import ActivityTimeline from "../components/tickets/ActivityTimeline.jsx";
+import CommentComposer from "../components/tickets/CommentComposer.jsx";
+import PropertiesPanel from "../components/tickets/PropertiesPanel.jsx";
+import SlaPanel from "../components/tickets/SlaPanel.jsx";
+import TicketDetailSkeleton from "../components/tickets/TicketDetailSkeleton.jsx";
+import { AssignDialog, OverrideDialog } from "../components/tickets/TicketDialogs.jsx";
+import {
+  buttonVariants,
+  Card,
+  Dropdown,
+  DropdownContent,
+  DropdownItem,
+  DropdownLabel,
+  DropdownTrigger,
+  EmptyState,
+  StatusIcon,
+  toast,
+} from "../components/ui/index.js";
 
 const STAFF_ROLES = [ROLES.SYSTEM_ADMIN, ROLES.IT_MANAGER, ROLES.TECHNICIAN, ROLES.ASSET_MANAGER];
+const FLASH_MS = 200;
 
-const formatDateTime = (iso) =>
-  new Date(iso).toLocaleString(undefined, { year: "numeric", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
-
-// history[].by and Comment.author arrive as { name, role } (D6.9). Falls back for a legacy raw id string (shortened,
-// clearly technical, rather than faking a name) and for null, which means a system action such as auto-escalation.
-const shortId = (id) => (id.length > 10 ? `${id.slice(0, 6)}…${id.slice(-4)}` : id);
-const displayName = (who) => {
-  if (who == null) return "System";
-  if (typeof who === "string") return `User ${shortId(who)}`;
-  return who.name || "Unknown user";
-};
-
-// category arrives as { name, parent: { name } | null } (parent null = top-level). Tolerates a missing category or a
-// legacy shape without a parent rather than crashing.
-const categoryPath = (category) => {
-  if (!category?.name) return "Unknown category";
-  return category.parent?.name ? `${category.parent.name} › ${category.name}` : category.name;
-};
+// A status icon in the shape DropdownItem expects for its `icon` prop (a component that takes `size`).
+const statusItemIcon = (status) =>
+  function StatusItemIcon({ size }) {
+    return <StatusIcon status={status} size={size} />;
+  };
 
 export default function TicketDetail() {
   const { id } = useParams();
   const { user } = useAuth();
+  const now = useNow(30_000);
   // UX only (D4.3): these roles pick someone else from a list; everyone else with ASSIGNED just claims. The server
   // decides who is actually eligible (assignable-users) and re-checks on transition.
   const isManagerRole = user.role === ROLES.IT_MANAGER || user.role === ROLES.SYSTEM_ADMIN;
@@ -63,23 +56,20 @@ export default function TicketDetail() {
   const [reference, setReference] = useState(null); // for the priority-override select's options (D5.3)
 
   const [transitionError, setTransitionError] = useState(null);
-  const [transitionNotice, setTransitionNotice] = useState(null);
   const [transitioningTo, setTransitioningTo] = useState(null);
-  const [assigningMode, setAssigningMode] = useState(false); // managers only: reveals the assignee picker
-  const [assigneeIdInput, setAssigneeIdInput] = useState(""); // selected assignee _id; "" = nothing chosen yet
+  const [flashStatus, setFlashStatus] = useState(false); // the 200ms highlight on the status field after a change
+  const [assignOpen, setAssignOpen] = useState(false); // managers only: the assignee picker dialog
   const [assignable, setAssignable] = useState(null); // null = not loaded; otherwise [{ _id, name, role }] from the server
   const [assignableError, setAssignableError] = useState(null);
 
-  const [overrideValue, setOverrideValue] = useState("");
-  const [overrideReason, setOverrideReason] = useState("");
+  const [overrideOpen, setOverrideOpen] = useState(false);
   const [overrideError, setOverrideError] = useState(null);
-  const [overrideNotice, setOverrideNotice] = useState(null);
   const [overrideSubmitting, setOverrideSubmitting] = useState(false);
 
-  const [commentBody, setCommentBody] = useState("");
-  const [commentIsInternal, setCommentIsInternal] = useState(false);
   const [commentError, setCommentError] = useState(null);
   const [commentSubmitting, setCommentSubmitting] = useState(false);
+
+  const [detailsOpen, setDetailsOpen] = useState(false); // small screens: the properties list is a collapsible section
 
   useEffect(() => {
     let ignore = false;
@@ -107,7 +97,7 @@ export default function TicketDetail() {
     let ignore = false;
     request("/reference")
       .then(({ data }) => !ignore && setReference(data))
-      .catch(() => {}); // the override select just has no options beyond the placeholder until this loads
+      .catch(() => {}); // the override select just has no options until this loads
     return () => {
       ignore = true;
     };
@@ -128,21 +118,32 @@ export default function TicketDetail() {
     };
   }, [id, showAssignPicker]);
 
+  // The highlight clears itself. The effect's cleanup stops the timer if the page goes away first.
+  useEffect(() => {
+    if (!flashStatus) return undefined;
+    const timer = setTimeout(() => setFlashStatus(false), FLASH_MS);
+    return () => clearTimeout(timer);
+  }, [flashStatus]);
+
   // Used after a successful transition/override (never inside the mount effect above, which already guards
   // against a stale response with `ignore`; these run once, sequentially, from a click handler instead).
-  const reloadTicket = () => request(`/tickets/${id}`).then(({ data }) => setTicket(data.ticket));
+  const reloadTicket = () =>
+    request(`/tickets/${id}`).then(({ data }) => {
+      setTicket(data.ticket);
+      return data.ticket;
+    });
   const reloadComments = () => request(`/tickets/${id}/comments`).then(({ data }) => setComments(data.items));
 
+  // Same call as before. Refetching (rather than patching state) keeps status, availableTransitions and history authoritative.
   const submitTransition = async (toStatus, extra = {}) => {
     setTransitionError(null);
-    setTransitionNotice(null);
     setTransitioningTo(toStatus);
     try {
       await request(`/tickets/${id}/transition`, { method: "POST", body: { toStatus, ...extra } });
-      await reloadTicket(); // refetch rather than patch client state, so status/availableTransitions/history stay authoritative
-      setTransitionNotice(`Updated to ${toStatus.replaceAll("_", " ")}`);
-      setAssigningMode(false);
-      setAssigneeIdInput("");
+      const updated = await reloadTicket();
+      toast.success(`Status updated to ${statusLabel(updated.status)}`);
+      setFlashStatus(true);
+      setAssignOpen(false);
     } catch (err) {
       setTransitionError(err);
     } finally {
@@ -150,40 +151,35 @@ export default function TicketDetail() {
     }
   };
 
-  const submitOverride = async (event) => {
-    event.preventDefault();
+  const submitOverride = async ({ value, reason }) => {
     setOverrideError(null);
-    setOverrideNotice(null);
     setOverrideSubmitting(true);
     try {
-      await request(`/tickets/${id}/priority-override`, {
-        method: "POST",
-        body: { value: overrideValue, reason: overrideReason },
-      });
+      await request(`/tickets/${id}/priority-override`, { method: "POST", body: { value, reason } });
       await reloadTicket();
-      setOverrideNotice("Priority override saved");
-      setOverrideReason("");
+      toast.success("Priority override saved");
+      return true;
     } catch (err) {
       setOverrideError(err);
+      return false;
     } finally {
       setOverrideSubmitting(false);
     }
   };
 
-  const submitComment = async (event) => {
-    event.preventDefault();
+  const submitComment = async ({ body, isInternal }) => {
     setCommentError(null);
     setCommentSubmitting(true);
     try {
       await request(`/tickets/${id}/comments`, {
         method: "POST",
-        body: { body: commentBody.trim(), ...(commentIsInternal && { isInternal: true }) },
+        body: { body, ...(isInternal && { isInternal: true }) },
       });
       await reloadComments(); // comments only, not the whole ticket - the ticket itself didn't change
-      setCommentBody("");
-      setCommentIsInternal(false);
+      return true;
     } catch (err) {
       setCommentError(err);
+      return false;
     } finally {
       setCommentSubmitting(false);
     }
@@ -191,350 +187,157 @@ export default function TicketDetail() {
 
   // --- full-page states: loading, and "there's nothing else to show" (403/404) ---
   if (loadError) {
+    const notFound = loadError.status === 404;
+    const denied = loadError.status === 403;
     return (
-      <div className="flex justify-center py-12">
-        <Card className="max-w-md text-center">
-          <h1 className="auth-card-title">
-            {loadError.status === 404 ? "Ticket not found" : loadError.status === 403 ? "Access denied" : "Something went wrong"}
-          </h1>
-          <p className="text-sm" style={muted}>
-            {loadError.message}
-          </p>
-          <Link to="/tickets" className="mt-4 inline-block text-sm" style={{ color: "var(--color-primary)" }}>
-            Back to tickets
-          </Link>
-        </Card>
-      </div>
+      <Card className="mx-auto max-w-md">
+        <EmptyState
+          icon={notFound ? FileQuestion : denied ? ShieldAlert : AlertCircle}
+          titleAs="h1"
+          title={notFound ? "Ticket not found" : denied ? "Access denied" : "Something went wrong"}
+          description={loadError.message}
+          action={
+            <Link to="/tickets" className={buttonVariants({ variant: "secondary" })}>
+              Back to tickets
+            </Link>
+          }
+        />
+      </Card>
     );
   }
-  if (!ticket) {
-    return (
-      <p role="status" className="p-6 text-sm" style={muted}>
-        Loading...
-      </p>
-    );
-  }
+  if (!ticket) return <TicketDetailSkeleton />;
 
-  const effectivePriority = ticket.priorityOverride?.value ?? ticket.priority;
-  const hasOverride = Boolean(ticket.priorityOverride);
   const canMarkInternal = STAFF_ROLES.includes(user.role);
 
+  // What the Assign item is called: managers choose someone, everyone else with ASSIGNED just claims.
+  const transitionLabel = (status) => {
+    if (status === "ASSIGNED") return ticket.assignee === null ? (isManagerRole ? "Assign" : "Claim ticket") : "Reassign";
+    return TRANSITION_LABELS[status] ?? statusLabel(status);
+  };
+
+  const chooseTransition = (status) => {
+    if (status === "ASSIGNED" && isManagerRole) setAssignOpen(true); // the picker keeps its own confirm step, in a Dialog
+    else submitTransition(status);
+  };
+
+  // The Status property. ONLY the transitions the server listed for this user appear (availableTransitions); with none,
+  // it is just a label.
+  const current = (
+    <span className="inline-flex items-center gap-1.5">
+      <StatusIcon status={ticket.status} /> {statusLabel(ticket.status)}
+    </span>
+  );
+  const statusField = (
+    <div className={cn("-mx-1.5 rounded-md px-1.5 py-0.5 transition-colors duration-[400ms]", flashStatus && "bg-accent-soft")}>
+      {ticket.availableTransitions.length === 0 ? (
+        current
+      ) : (
+        <Dropdown>
+          <DropdownTrigger asChild>
+            <button
+              type="button"
+              disabled={Boolean(transitioningTo)}
+              aria-label={`Status: ${statusLabel(ticket.status)}. Change status`}
+              className="-ml-1.5 inline-flex h-7 items-center gap-1.5 rounded-md px-1.5 hover:bg-subtle disabled:opacity-60"
+            >
+              {transitioningTo ? <>Updating...</> : current}
+              <ChevronDown size={12} className="text-muted" aria-hidden="true" />
+            </button>
+          </DropdownTrigger>
+          <DropdownContent align="start">
+            <DropdownLabel>Change status</DropdownLabel>
+            {ticket.availableTransitions.map((status) => (
+              <DropdownItem
+                key={status}
+                icon={statusItemIcon(status)}
+                destructive={status === "ESCALATED"}
+                onSelect={() => chooseTransition(status)}
+              >
+                {transitionLabel(status)}
+              </DropdownItem>
+            ))}
+          </DropdownContent>
+        </Dropdown>
+      )}
+    </div>
+  );
+
   return (
-    <div className="space-y-6">
-      {/* 1. Header */}
-      <Card>
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="text-lg font-bold" style={{ color: "var(--color-text)" }}>
-                TKT-{ticket.ticketNumber}
-              </span>
-              <span className="text-lg" style={{ color: "var(--color-text)" }}>
-                {ticket.title}
-              </span>
-            </div>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              <Badge variant="status" value={ticket.status} />
-              <Badge variant="priority" value={effectivePriority} />
-              {hasOverride && (
-                <span className="text-xs" style={muted} title={ticket.priorityOverride.reason}>
-                  (overridden)
-                </span>
-              )}
-              {ticket.isOverdue && (
-                <span
-                  className="text-xs font-medium"
-                  style={{ color: "var(--color-danger)" }}
-                  title={`Resolution deadline was ${formatDateTime(ticket.resolutionDeadline)}`}
-                >
-                  ● Overdue
-                </span>
-              )}
-            </div>
-            {ticket.escalatedAt && (
-              <p className="mt-2 text-xs font-medium" style={{ color: "var(--color-danger)" }}>
-                Escalated at {formatDateTime(ticket.escalatedAt)}
-              </p>
-            )}
-          </div>
-          <div className="text-right text-sm" style={muted}>
-            <div>Created {formatDateTime(ticket.createdAt)}</div>
-            <div>Updated {formatDateTime(ticket.updatedAt)}</div>
-          </div>
-        </div>
-      </Card>
-
-      {/* 2. Body */}
-      <Card title="Details">
-        <p className="text-sm whitespace-pre-wrap">{ticket.description}</p>
-        <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-          <div>
-            <dt className="text-xs" style={muted}>
-              Requester
-            </dt>
-            <dd>
-              {ticket.requester.firstName} {ticket.requester.lastName}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs" style={muted}>
-              Assignee
-            </dt>
-            <dd>
-              {ticket.assignee ? (
-                `${ticket.assignee.firstName} ${ticket.assignee.lastName}`
-              ) : (
-                <span className="italic" style={muted}>
-                  Unassigned
-                </span>
-              )}
-            </dd>
-          </div>
-          <div>
-            <dt className="text-xs" style={muted}>
-              Department
-            </dt>
-            <dd>{ticket.department.name}</dd>
-          </div>
-          <div>
-            <dt className="text-xs" style={muted}>
-              Category
-            </dt>
-            <dd>{categoryPath(ticket.category)}</dd>
-          </div>
-          <div>
-            <dt className="text-xs" style={muted}>
-              Response due
-            </dt>
-            <dd>{ticket.responseDeadline ? formatDateTime(ticket.responseDeadline) : "-"}</dd>
-          </div>
-          <div>
-            <dt className="text-xs" style={muted}>
-              Resolution due
-            </dt>
-            <dd className="flex items-center gap-2">
-              {ticket.resolutionDeadline ? formatDateTime(ticket.resolutionDeadline) : "-"}
-              {ticket.isOverdue && (
-                <span className="text-xs font-medium" style={{ color: "var(--color-danger)" }}>
-                  ● Overdue
-                </span>
-              )}
-            </dd>
-          </div>
-        </dl>
-      </Card>
-
-      {/* 3. Actions */}
-      <Card title="Actions">
-        <ErrorBanner error={transitionError} focusOnShow />
-        <Notice message={transitionNotice} />
-
-        {ticket.availableTransitions.length === 0 ? (
-          <p className="text-sm" style={muted}>
-            No actions available right now.
-          </p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            {ticket.availableTransitions.map((status) => {
-              if (status === "ASSIGNED") {
-                const label = ticket.assignee === null ? "Claim ticket" : "Reassign";
-                if (!isManagerRole) {
-                  return (
-                    <Button
-                      key={status}
-                      type="button"
-                      variant="primary"
-                      onClick={() => submitTransition("ASSIGNED")}
-                      disabled={Boolean(transitioningTo)}
-                    >
-                      {transitioningTo === "ASSIGNED" ? "Claiming..." : label}
-                    </Button>
-                  );
-                }
-                // Managers pick from the server's list of eligible users (assignable-users); the transition
-                // request is unchanged and the server still validates the chosen id.
-                return assigningMode ? (
-                  <form
-                    key={status}
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      if (assigneeIdInput) submitTransition("ASSIGNED", { assigneeId: assigneeIdInput });
-                    }}
-                    className="flex flex-wrap items-center gap-2"
-                  >
-                    {assignableError ? (
-                      <ErrorBanner error={assignableError} />
-                    ) : assignable === null ? (
-                      <span className="text-sm" style={muted}>
-                        Loading assignees...
-                      </span>
-                    ) : assignable.length === 0 ? (
-                      <span className="text-sm" style={muted}>
-                        No eligible assignees in this department
-                      </span>
-                    ) : (
-                      <select
-                        aria-label="Assignee"
-                        value={assigneeIdInput}
-                        onChange={(e) => setAssigneeIdInput(e.target.value)}
-                        className={inputClass}
-                      >
-                        <option value="">Select an assignee...</option>
-                        {assignable.map((u) => (
-                          <option key={u._id} value={u._id}>
-                            {u.name} ({u.role})
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <Button type="submit" variant="primary" disabled={transitioningTo === "ASSIGNED" || !assigneeIdInput}>
-                      {transitioningTo === "ASSIGNED" ? "Assigning..." : "Confirm"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      onClick={() => {
-                        setAssigningMode(false);
-                        setAssigneeIdInput("");
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </form>
-                ) : (
-                  <Button key={status} type="button" variant="secondary" onClick={() => setAssigningMode(true)}>
-                    {label}
-                  </Button>
-                );
-              }
-
-              return (
-                <Button
-                  key={status}
-                  type="button"
-                  variant={status === "ESCALATED" ? "danger" : "secondary"}
-                  onClick={() => submitTransition(status)}
-                  disabled={Boolean(transitioningTo)}
-                >
-                  {transitioningTo === status ? "Working..." : TRANSITION_LABELS[status] ?? status}
-                </Button>
-              );
-            })}
-          </div>
-        )}
-
-        {ticket.canOverridePriority && (
-          <form onSubmit={submitOverride} className="mt-4 space-y-2 border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
-            <ErrorBanner error={overrideError} focusOnShow />
-            <Notice message={overrideNotice} />
-            <div className="flex flex-wrap items-end gap-2">
-              <label className="text-sm">
-                <span>Change priority</span>
-                <br />
-                <select required value={overrideValue} onChange={(e) => setOverrideValue(e.target.value)} className={inputClass}>
-                  <option value="">Select</option>
-                  {(reference?.priorities ?? []).map((p) => (
-                    <option key={p} value={p}>
-                      {p}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="min-w-[14rem] flex-1 text-sm">
-                <span>Reason</span>
-                <br />
-                <input
-                  required
-                  value={overrideReason}
-                  onChange={(e) => setOverrideReason(e.target.value)}
-                  className={`${inputClass} w-full`}
-                />
-              </label>
-              <Button type="submit" variant="primary" disabled={overrideSubmitting}>
-                {overrideSubmitting ? "Saving..." : "Override priority"}
-              </Button>
-            </div>
-          </form>
-        )}
-      </Card>
-
-      {/* 4. History - most recent first (matches the ticket list's own newest-first sort) */}
-      <Card title="History">
-        <ol className="space-y-3">
-          {[...ticket.history].reverse().map((h, i) => (
-            <li key={i} className="border-b pb-2 text-sm last:border-b-0 last:pb-0" style={{ borderColor: "var(--color-border)" }}>
-              <div>
-                {h.from ? h.from.replaceAll("_", " ") : "Created"} &rarr; {h.to.replaceAll("_", " ")}
-              </div>
-              <div className="text-xs" style={muted}>
-                by {displayName(h.by)} &middot; {formatDateTime(h.at)}
-              </div>
-            </li>
-          ))}
+    <div className="space-y-4">
+      <nav aria-label="Breadcrumb">
+        <ol className="flex items-center gap-1 text-13 text-muted">
+          <li>
+            <Link to="/tickets" className="inline-flex min-h-6 items-center gap-1 hover:text-fg">
+              <ArrowLeft size={13} aria-hidden="true" /> Tickets
+            </Link>
+          </li>
+          <ChevronRight size={12} aria-hidden="true" />
+          <li aria-current="page" className="font-mono text-xs text-fg">
+            TKT-{ticket.ticketNumber}
+          </li>
         </ol>
-      </Card>
+      </nav>
 
-      {/* 5. Comments */}
-      <Card title="Comments">
-        <ErrorBanner error={commentsError} />
-        <div className="space-y-3">
-          {comments === null && (
-            <p role="status" className="text-sm" style={muted}>
-              Loading...
-            </p>
-          )}
-          {comments?.length === 0 && (
-            <p className="text-sm" style={muted}>
-              No comments yet.
-            </p>
-          )}
-          {comments?.map((c) =>
-            c.isInternal ? (
-              <div key={c._id} className="rounded-md border-l-4 p-3" style={{ borderLeftColor: "#f59e0b", backgroundColor: "#fffbeb" }}>
-                <div className="mb-1 flex items-center gap-2">
-                  <span className="text-xs font-semibold" style={{ color: "#92400e" }}>
-                    Internal
-                  </span>
-                  <span className="text-xs" style={muted}>
-                    by {displayName(c.author)} &middot; {formatDateTime(c.createdAt)}
-                  </span>
-                </div>
-                <p className="text-sm whitespace-pre-wrap">{c.body}</p>
-              </div>
-            ) : (
-              <div key={c._id} className="rounded-md border p-3" style={{ borderColor: "var(--color-border)" }}>
-                <div className="mb-1 text-xs" style={muted}>
-                  by {displayName(c.author)} &middot; {formatDateTime(c.createdAt)}
-                </div>
-                <p className="text-sm whitespace-pre-wrap">{c.body}</p>
-              </div>
-            )
-          )}
-        </div>
+      {/* While the assign dialog is open its own copy of the error is shown inside it. */}
+      {!assignOpen && <ErrorBanner error={transitionError} focusOnShow />}
 
-        <form onSubmit={submitComment} className="mt-4 space-y-2 border-t pt-4" style={{ borderColor: "var(--color-border)" }}>
-          <ErrorBanner error={commentError} focusOnShow />
-          <label className="block text-sm">
-            <span>Add a comment</span>
-            <textarea
-              required
-              rows={3}
-              value={commentBody}
-              onChange={(e) => setCommentBody(e.target.value)}
-              className={`${inputClass} w-full`}
-            />
-          </label>
-          {canMarkInternal && (
-            <label className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={commentIsInternal} onChange={(e) => setCommentIsInternal(e.target.checked)} />
-              Internal note (staff only)
-            </label>
-          )}
-          <Button type="submit" variant="primary" disabled={commentSubmitting}>
-            {commentSubmitting ? "Posting..." : "Post comment"}
-          </Button>
-        </form>
-      </Card>
+      {/* auto + 1fr rows: the tall sidebar spans both, and the spare height goes to the Activity row, not between it and the description. */}
+      <div className="grid gap-x-8 gap-y-6 lg:grid-cols-[minmax(0,1fr)_20rem] lg:grid-rows-[auto_1fr]">
+        <section aria-label="Ticket" className="min-w-0 lg:col-start-1 lg:row-start-1">
+          <p className="font-mono text-xs text-muted-strong">TKT-{ticket.ticketNumber}</p>
+          <h1 className="mt-1 text-xl font-semibold tracking-tight text-fg">{ticket.title}</h1>
+          <p className="mt-4 whitespace-pre-wrap text-sm text-fg">{ticket.description}</p>
+        </section>
+
+        <aside className="space-y-4 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <div>
+            <button
+              type="button"
+              aria-expanded={detailsOpen}
+              aria-controls="ticket-details"
+              onClick={() => setDetailsOpen((o) => !o)}
+              className="flex h-9 w-full items-center justify-between rounded-md border border-border bg-surface px-3 text-13 font-medium text-fg lg:hidden"
+            >
+              Details
+              <ChevronDown size={14} className={cn("transition-transform duration-150", detailsOpen && "rotate-180")} aria-hidden="true" />
+            </button>
+            <div id="ticket-details" className={cn(detailsOpen ? "mt-2 block" : "hidden", "lg:mt-0 lg:block")}>
+              <PropertiesPanel ticket={ticket} statusField={statusField} onChangePriority={() => setOverrideOpen(true)} />
+            </div>
+          </div>
+          <SlaPanel ticket={ticket} now={now} />
+        </aside>
+
+        <section aria-labelledby="activity-heading" className="min-w-0 space-y-3 lg:col-start-1 lg:row-start-2">
+          <h2 id="activity-heading" className="text-sm font-semibold text-fg">
+            Activity
+          </h2>
+          <ErrorBanner error={commentsError} />
+          <ActivityTimeline history={ticket.history} comments={commentsError ? [] : comments} now={now} />
+          <CommentComposer canMarkInternal={canMarkInternal} onSubmit={submitComment} submitting={commentSubmitting} error={commentError} />
+        </section>
+      </div>
+
+      <AssignDialog
+        open={assignOpen}
+        onOpenChange={setAssignOpen}
+        assignable={assignable}
+        assignableError={assignableError}
+        submitting={transitioningTo === "ASSIGNED"}
+        error={transitionError}
+        onConfirm={(assigneeId) => submitTransition("ASSIGNED", { assigneeId })}
+      />
+      <OverrideDialog
+        open={overrideOpen}
+        onOpenChange={(open) => {
+          setOverrideOpen(open);
+          if (!open) setOverrideError(null);
+        }}
+        priorities={reference?.priorities ?? []}
+        submitting={overrideSubmitting}
+        error={overrideError}
+        onSubmit={submitOverride}
+      />
     </div>
   );
 }

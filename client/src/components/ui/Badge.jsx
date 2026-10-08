@@ -1,23 +1,28 @@
-// Colors are read from the CSS custom properties in index.css via var(), so index.css stays the one place
-// that defines the palette; this just picks which variable applies to which value.
-const VARIANT_COLOR_VAR = {
-  priority: (value) => `var(--color-priority-${String(value).toLowerCase()})`,
-  status: (value) => `var(--color-status-${String(value).toLowerCase()})`,
-  active: (value) => (value ? "var(--color-success)" : "var(--color-text-muted)"),
-  role: () => "var(--color-text-muted)", // no severity to signal for a role, so always the neutral tone
+import { cn } from "../../lib/cn.js";
+
+// A small label. `tone` picks the colour; the text is always readable on its tinted background (the -ink colours, never the
+// raw semantic colour). `icon` is an optional leading node.
+const tones = {
+  neutral: "border-border bg-subtle text-muted-strong",
+  accent: "border-accent/25 bg-accent-soft text-accent-ink",
+  success: "border-success/25 bg-success-soft text-success-ink",
+  warning: "border-warning/30 bg-warning-soft text-warning-ink",
+  danger: "border-danger/25 bg-danger-soft text-danger-ink",
+  info: "border-info/25 bg-info-soft text-info-ink",
 };
 
-const formatLabel = (value) => String(value).replaceAll("_", " ");
-
-// variant: "role" | "status" | "priority" | "active". value: the enum string, or a boolean for "active".
-// children overrides the auto-generated label (rarely needed; formatLabel covers every current case).
-export default function Badge({ variant, value, children }) {
-  const color = (VARIANT_COLOR_VAR[variant] ?? VARIANT_COLOR_VAR.role)(value);
-  const label = children ?? (variant === "active" ? (value ? "Active" : "Inactive") : formatLabel(value));
-
+export default function Badge({ tone = "neutral", icon, className, children, ...props }) {
   return (
-    <span className="badge" style={{ "--badge-color": color }}>
-      {label}
+    <span
+      className={cn(
+        "inline-flex h-5 items-center gap-1 whitespace-nowrap rounded-md border px-1.5 text-xs font-medium",
+        tones[tone] ?? tones.neutral,
+        className
+      )}
+      {...props}
+    >
+      {icon}
+      {children}
     </span>
   );
 }

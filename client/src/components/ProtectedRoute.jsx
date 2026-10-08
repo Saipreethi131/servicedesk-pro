@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
+import { Spinner } from "./ui/index.js";
 
 export default function ProtectedRoute() {
   const { user, loading } = useAuth();
@@ -8,10 +9,8 @@ export default function ProtectedRoute() {
   // Wait for the startup refresh: without this, a reload would bounce a logged-in user to /login for a moment.
   if (loading) {
     return (
-      <div className="auth-shell">
-        <p role="status" className="text-sm" style={{ color: "var(--color-text-muted)" }}>
-          Loading...
-        </p>
+      <div className="grid min-h-screen place-items-center bg-canvas text-sm text-muted">
+        <Spinner size={20} label="Loading" />
       </div>
     );
   }

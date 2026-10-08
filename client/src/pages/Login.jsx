@@ -3,8 +3,9 @@ import { Navigate, useLocation } from "react-router";
 import { useAuth } from "../AuthContext.jsx";
 import useDocumentTitle from "../useDocumentTitle.js";
 import ErrorBanner from "../components/ErrorBanner.jsx";
-import Card from "../components/ui/Card.jsx";
 import Button from "../components/ui/Button.jsx";
+import Input from "../components/ui/Input.jsx";
+import Spinner from "../components/ui/Spinner.jsx";
 
 export default function Login() {
   useDocumentTitle("Sign in");
@@ -24,9 +25,9 @@ export default function Login() {
 
   if (loading) {
     return (
-      <p role="status" className="p-6 text-sm" style={{ color: "var(--color-text-muted)" }}>
-        Loading...
-      </p>
+      <div className="grid min-h-screen place-items-center bg-canvas text-sm text-muted">
+        <Spinner size={20} label="Loading" />
+      </div>
     );
   }
   // Already signed in (or just did): go where ProtectedRoute originally sent us from, else the dashboard.
@@ -46,23 +47,23 @@ export default function Login() {
   };
 
   return (
-    <div className="auth-shell">
-      <Card as="form" onSubmit={handleSubmit} className="auth-card space-y-4">
-        <h1 className="auth-card-title">Sign in to ServiceDesk Pro</h1>
-        {endedMessage && (
-          <p
-            role="status"
-            className="rounded-md border px-3 py-2 text-sm"
-            style={{ borderColor: "#fde68a", backgroundColor: "#fffbeb", color: "#92400e" }}
-          >
-            {endedMessage}
-          </p>
-        )}
-        <ErrorBanner error={error} focusOnShow />
+    <div className="grid min-h-screen lg:grid-cols-2">
+      <div className="flex items-center justify-center bg-canvas p-6">
+        <form onSubmit={handleSubmit} className="w-full max-w-sm space-y-4">
+          <div className="mb-2">
+            <p className="text-sm font-semibold text-fg">ServiceDesk Pro</p>
+            <h1 className="mt-6 text-xl font-semibold text-fg">Sign in</h1>
+            <p className="mt-1 text-sm text-muted">Use your work email to continue.</p>
+          </div>
+          {endedMessage && (
+            <p role="status" className="rounded-md border border-warning/30 bg-warning-soft px-3 py-2 text-sm text-warning-ink">
+              {endedMessage}
+            </p>
+          )}
+          <ErrorBanner error={error} focusOnShow />
 
-        <label className="block text-sm">
-          <span>Email</span>
-          <input
+          <Input
+            label="Email"
             type="email"
             required
             autoComplete="username"
@@ -71,13 +72,9 @@ export default function Login() {
               setEmail(e.target.value);
               setEndedMessage(null);
             }}
-            className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2"
           />
-        </label>
-
-        <label className="block text-sm">
-          <span>Password</span>
-          <input
+          <Input
+            label="Password"
             type="password"
             required
             autoComplete="current-password"
@@ -86,14 +83,38 @@ export default function Login() {
               setPassword(e.target.value);
               setEndedMessage(null);
             }}
-            className="mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2"
           />
-        </label>
 
-        <Button type="submit" variant="primary" disabled={submitting} className="w-full">
-          {submitting ? "Signing in..." : "Sign in"}
-        </Button>
-      </Card>
+          <Button type="submit" variant="primary" disabled={submitting} className="w-full">
+            {submitting ? "Signing in..." : "Sign in"}
+          </Button>
+        </form>
+      </div>
+
+      {/* Product panel: decorative only (aria-hidden) except the statement. Large screens only. */}
+      <aside className="relative hidden overflow-hidden border-l border-border bg-surface lg:flex lg:items-end">
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 animate-grid-drift opacity-60"
+          style={{
+            backgroundImage:
+              "linear-gradient(to right, var(--border) 1px, transparent 1px), linear-gradient(to bottom, var(--border) 1px, transparent 1px)",
+            backgroundSize: "48px 48px",
+            maskImage: "radial-gradient(ellipse at 30% 40%, black 20%, transparent 75%)",
+            WebkitMaskImage: "radial-gradient(ellipse at 30% 40%, black 20%, transparent 75%)",
+          }}
+        />
+        <div
+          aria-hidden="true"
+          className="absolute -top-24 -right-24 size-96 animate-glow-drift rounded-full bg-accent-soft blur-3xl"
+        />
+        <div className="relative max-w-md p-12">
+          <p className="text-xl font-semibold text-fg">Every request, resolved on time.</p>
+          <p className="mt-3 text-sm text-muted">
+            Raise, route and resolve IT tickets against clear deadlines, with the right people seeing the right work.
+          </p>
+        </div>
+      </aside>
     </div>
   );
 }

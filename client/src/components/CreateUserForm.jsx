@@ -1,13 +1,12 @@
 import { useState } from "react";
 import { request } from "../api.js";
 import { useAuth } from "../AuthContext.jsx";
-import { ROLES, manageableRoles, roleLabel } from "../roles.js";
+import { ROLES, manageableRoles } from "../roles.js";
+import { roleLabel } from "../lib/labels.js";
 import ErrorBanner from "./ErrorBanner.jsx";
-import Card from "./ui/Card.jsx";
-import Button from "./ui/Button.jsx";
+import { Button, Card, Checkbox, Input, Select } from "./ui/index.js";
 
-const inputClass =
-  "mt-1 w-full rounded-md border border-[var(--color-border)] px-3 py-2 disabled:bg-[var(--color-bg)] disabled:text-[var(--color-text-muted)]";
+const NO_DEPARTMENT = "__none__"; // Radix Select cannot hold "" as an option value, so "No department" travels as this and is mapped back
 
 // onStart runs when a submit begins, so the page can clear messages from earlier actions instead of leaving them next to the new result.
 export default function CreateUserForm({ departments, onStart, onCreated }) {
@@ -26,6 +25,7 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(null);
+  const [departmentError, setDepartmentError] = useState(null);
   const [submitting, setSubmitting] = useState(false);
 
   // Every role except SYSTEM_ADMIN needs a department (D3.9).
@@ -33,6 +33,12 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    // The Radix Select has no native "required" the browser can point at, so this one rule is checked here.
+    if (departmentRequired && !department) {
+      setDepartmentError("Select a department");
+      return;
+    }
+    setDepartmentError(null);
     setError(null);
     onStart();
     setSubmitting(true);
@@ -61,85 +67,65 @@ export default function CreateUserForm({ departments, onStart, onCreated }) {
     }
   };
 
+  // For a SYSTEM_ADMIN (department optional) the first choice is an explicit "No department".
+  const departmentOptions = [
+    ...(departmentRequired ? [] : [{ value: NO_DEPARTMENT, label: "No department" }]),
+    ...departments.map((d) => ({ value: d._id, label: d.name })),
+  ];
+
   return (
-    <Card as="form" onSubmit={handleSubmit} title="Create user" className="space-y-3">
+    <Card as="form" onSubmit={handleSubmit} title="Create user" className="space-y-4">
       <ErrorBanner error={error} focusOnShow />
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <label className="block text-sm">
-          <span>First name</span>
-          <input required value={firstName} onChange={(e) => setFirstName(e.target.value)} className={inputClass} />
-        </label>
-        <label className="block text-sm">
-          <span>Last name</span>
-          <input required value={lastName} onChange={(e) => setLastName(e.target.value)} className={inputClass} />
-        </label>
-        <label className="block text-sm md:col-span-2">
-          <span>Email</span>
-          <input
-            type="email"
-            required
-            autoComplete="off"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className={inputClass}
-          />
-        </label>
+      <div className="grid gap-4 md:grid-cols-2">
+        <Input label="First name" required value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+        <Input label="Last name" required value={lastName} onChange={(e) => setLastName(e.target.value)} />
+        <Input
+          label="Email"
+          type="email"
+          required
+          autoComplete="off"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          wrapperClassName="md:col-span-2"
+        />
 
-        <label className="block text-sm">
-          <span>Role</span>
-          <select value={role} onChange={(e) => setRole(e.target.value)} className={inputClass}>
-            {roleOptions.map((r) => (
-              <option key={r} value={r}>
-                {roleLabel(r)}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label="Role"
+          value={role}
+          onValueChange={setRole}
+          options={roleOptions.map((r) => ({ value: r, label: roleLabel(r) }))}
+        />
 
-        <label className="block text-sm">
-          <span>Department</span>
-          <select
-            value={department}
-            onChange={(e) => setDepartment(e.target.value)}
-            disabled={!isAdmin}
-            required={departmentRequired}
-            className={inputClass}
-          >
-            {/* Empty choice: a prompt when a department is needed, an explicit "none" for a SYSTEM_ADMIN. */}
-            <option value="">{departmentRequired ? "Select a department" : "No department"}</option>
-            {departments.map((d) => (
-              <option key={d._id} value={d._id}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <Select
+          label="Department"
+          value={department || (departmentRequired ? "" : NO_DEPARTMENT)}
+          onValueChange={(value) => {
+            setDepartment(value === NO_DEPARTMENT ? "" : value);
+            setDepartmentError(null);
+          }}
+          disabled={!isAdmin}
+          placeholder="Select a department"
+          options={departmentOptions}
+          error={departmentError}
+        />
 
-        {/* Not one big <label>: the "Show" checkbox has a label of its own, and labels must not nest. */}
-        <div className="text-sm md:col-span-2">
-          <label htmlFor="temporaryPassword">Temporary password</label>
-          <input
-            id="temporaryPassword"
+        <div className="space-y-2 md:col-span-2">
+          <Input
+            label="Temporary password"
             type={showPassword ? "text" : "password"}
             required
             minLength={8}
             autoComplete="new-password"
+            hint="The user must change it at first sign-in. Share it securely."
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className={inputClass}
           />
-          <div className="mt-1 flex items-center justify-between text-xs" style={{ color: "var(--color-text-muted)" }}>
-            <span>The user must change it at first sign-in. Share it securely.</span>
-            <label className="flex items-center gap-1">
-              <input type="checkbox" checked={showPassword} onChange={(e) => setShowPassword(e.target.checked)} />
-              Show
-            </label>
-          </div>
+          <Checkbox label="Show password" checked={showPassword} onCheckedChange={(checked) => setShowPassword(checked === true)} />
         </div>
       </div>
 
-      <Button type="submit" variant="primary" disabled={submitting}>
+      <Button type="submit" variant="primary" loading={submitting}>
         {submitting ? "Creating..." : "Create user"}
       </Button>
     </Card>
